@@ -8,6 +8,16 @@ on:
         description: "Push image to registry"
         required: false
         default: false
+      set-meta-annotations:
+        type: boolean
+        description: "Set metadata-action annotations"
+        required: false
+        default: false
+      set-meta-labels:
+        type: boolean
+        description: "Set metadata-action labels"
+        required: false
+        default: false
       meta-image:
         type: string
         description: "Image to use as base name for tags"
@@ -19,6 +29,14 @@ on:
       meta-flavor:
         type: string
         description: "Flavors to apply"
+        required: false
+      meta-labels:
+        type: string
+        description: "List of custom labels"
+        required: false
+      meta-annotations:
+        type: string
+        description: "List of custom annotations"
         required: false
       login-registry:
         type: string
@@ -68,6 +86,8 @@ jobs:
           images: ${{ inputs.meta-image }}
           tags: ${{ inputs.meta-tags }}
           flavor: ${{ inputs.meta-flavor }}
+          labels: ${{ inputs.meta-labels }}
+          annotations: ${{ inputs.meta-annotations }}
       -
         name: Build
         uses: docker/build-push-action@v6
@@ -75,4 +95,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           push: ${{ inputs.push }}
           sbom: true
+          labels: ${{ inputs.set-meta-labels && steps.meta.outputs.labels || '' }}
+          annotations: ${{ inputs.set-meta-annotations && steps.meta.outputs.annotations || '' }}
           github-token: ${{ secrets.github-token || github.token }}
