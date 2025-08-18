@@ -142,12 +142,27 @@ jobs:
       -
         name: Sign with GitHub OIDC Token
         if: ${{ inputs.push }}
+        uses: actions/github-script@v7
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          images=""
-          for tag in ${TAGS}; do
-            images+="${tag}@${DIGEST} "
-          done
-          cosign sign --yes ${images}
+          INPUT_TAGS: ${{ steps.meta.outputs.tags }}
+          INPUT_DIGESTS: ${{ steps.attest.outputs.digests }}
+        with:
+          script: |
+            function getInputList(name) {
+              return core.getInput(name) ? core.getInput(name).split(/[\r?\n,]+/).filter(x => x !== '') : [];
+            }
+            const tags = getInputList('tags');
+            const digests = getInputList('digests');
+            const images = [];
+            for (const tag of tags) {
+              for (const digest of digests) {
+                images.push(`${tag}@${digest}`);
+              }
+            }
+            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', ...images], {
+              ignoreReturnCode: true
+            }).then(res => {
+              if (res.stderr.length > 0 && res.exitCode != 0) {
+                throw new Error(res.stderr);
+              }
+            });
