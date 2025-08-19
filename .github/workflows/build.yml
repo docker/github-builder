@@ -166,3 +166,30 @@ jobs:
                 throw new Error(res.stderr);
               }
             });
+      -
+        name: Verify signatures
+        if: ${{ inputs.push }}
+        uses: actions/github-script@v7
+        env:
+          INPUT_TAGS: ${{ steps.meta.outputs.tags }}
+          INPUT_DIGESTS: ${{ steps.attest.outputs.digests }}
+        with:
+          script: |
+            function getInputList(name) {
+              return core.getInput(name) ? core.getInput(name).split(/[\r?\n,]+/).filter(x => x !== '') : [];
+            }
+            const tags = getInputList('tags');
+            const digests = getInputList('digests');
+            const images = [];
+            for (const tag of tags) {
+              for (const digest of digests) {
+                images.push(`${tag}@${digest}`);
+              }
+            }
+            await exec.getExecOutput('cosign', ['-d', 'verify', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', ...images], {
+              ignoreReturnCode: true
+            }).then(res => {
+              if (res.stderr.length > 0 && res.exitCode != 0) {
+                core.warning(`Verification failed: ${res.stderr}`);
+              }
+            });
