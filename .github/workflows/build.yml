@@ -167,7 +167,7 @@ jobs:
                 images.push(`${tag}@${digest}`);
               }
             }
-            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', '--registry-referrers-mode', 'oci-1-1', ...images], {
+            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', '--oidc-provider', 'github-actions', '--oidc-issuer', 'https://token.actions.githubusercontent.com', '--registry-referrers-mode', 'oci-1-1', ...images], {
               ignoreReturnCode: true
             }).then(res => {
               if (res.stderr.length > 0 && res.exitCode != 0) {
