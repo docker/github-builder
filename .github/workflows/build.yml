@@ -156,6 +156,7 @@ jobs:
         env:
           INPUT_TAGS: ${{ steps.meta.outputs.tags }}
           INPUT_DIGESTS: ${{ steps.attest.outputs.digests }}
+          COSIGN_EXPERIMENTAL: 1
         with:
           script: |
             const tags = core.getMultilineInput('tags');
@@ -166,7 +167,7 @@ jobs:
                 images.push(`${tag}@${digest}`);
               }
             }
-            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', ...images], {
+            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', '--registry-referrers-mode', 'oci-1-1', ...images], {
               ignoreReturnCode: true
             }).then(res => {
               if (res.stderr.length > 0 && res.exitCode != 0) {
@@ -180,6 +181,7 @@ jobs:
         env:
           INPUT_TAGS: ${{ steps.meta.outputs.tags }}
           INPUT_DIGESTS: ${{ steps.attest.outputs.digests }}
+          COSIGN_EXPERIMENTAL: 1
         with:
           script: |
             const tags = core.getMultilineInput('tags');
@@ -187,7 +189,7 @@ jobs:
             for (const tag of tags) {
               for (const digest of digests) {
                 await core.group(`Verifying ${tag}@${digest}`, async () => {
-                  await exec.getExecOutput('cosign', ['-d', 'verify', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', `${tag}@${digest}`], {
+                  await exec.getExecOutput('cosign', ['-d', 'verify', '--experimental-oci11', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', `${tag}@${digest}`], {
                     ignoreReturnCode: true
                   }).then(res => {
                     if (res.stderr.length > 0 && res.exitCode != 0) {
