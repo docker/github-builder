@@ -128,11 +128,12 @@ jobs:
         id: attest
         uses: actions/github-script@v7
         env:
-          INPUT_TAGS: ${{ steps.meta.outputs.tags }}
+          INPUT_IMAGE-NAME: ${{ inputs.meta-image }}
+          INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
         with:
           script: |
             await core.group(`Get attestations digest`, async () => {
-              await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', core.getMultilineInput('tags')[0], '--format', '{{json .Manifest}}'], {
+              await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', `${core.getInput('image-name')}@${core.getInput('image-digest')}`, '--format', '{{json .Manifest}}'], {
                 ignoreReturnCode: true,
                 silent: true
               }).then(res => {
