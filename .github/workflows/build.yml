@@ -124,7 +124,7 @@ jobs:
           annotations: ${{ inputs.set-meta-annotations && steps.meta.outputs.annotations || '' }}
           github-token: ${{ secrets.github-token || github.token }}
       -
-        name: Get attestations digest
+        name: Get attestations manifest digest
         id: attest
         uses: actions/github-script@v7
         env:
@@ -132,19 +132,21 @@ jobs:
           INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
         with:
           script: |
-            await core.group(`Get attestations digest`, async () => {
+            let manifest = {};
+            await core.group(`Get manifest`, async () => {
               await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', `${core.getInput('image-name')}@${core.getInput('image-digest')}`, '--format', '{{json .Manifest}}'], {
-                ignoreReturnCode: true,
-                silent: true
+                ignoreReturnCode: true
               }).then(res => {
                 if (res.stderr.length > 0 && res.exitCode != 0) {
                   throw new Error(res.stderr);
                 }
-                const dt = JSON.parse(res.stdout.trim());
-                const attestationDigests = dt.manifests.filter(m => m.annotations && m.annotations['vnd.docker.reference.type'] === 'attestation-manifest').map(m => m.digest);
-                core.info(JSON.stringify(attestationDigests, null, 2));
-                core.setOutput('digests', attestationDigests.join('\n'));
+                manifest = JSON.parse(res.stdout.trim());
               });
+            });
+            await core.group(`Get attestations manifest digest`, async () => {
+              const attestationDigests = manifest.manifests.filter(m => m.annotations && m.annotations['vnd.docker.reference.type'] === 'attestation-manifest').map(m => m.digest);
+              core.info(JSON.stringify(attestationDigests, null, 2));
+              core.setOutput('digests', attestationDigests.join('\n'));
             });
       -
         name: Install cosign
