@@ -182,26 +182,24 @@ jobs:
         if: ${{ inputs.push }}
         uses: actions/github-script@v7
         env:
-          INPUT_TAGS: ${{ steps.meta.outputs.tags }}
+          INPUT_IMAGE-NAME: ${{ inputs.meta-image }}
           INPUT_DIGESTS: ${{ steps.attest.outputs.digests }}
           COSIGN_EXPERIMENTAL: 1
         with:
           script: |
-            const tags = core.getMultilineInput('tags');
             const digests = core.getMultilineInput('digests');
-            for (const tag of tags) {
-              for (const digest of digests) {
-                await core.group(`Verifying ${tag}@${digest}`, async () => {
-                  await new Promise(resolve => setTimeout(resolve, 3000));
-                  await exec.getExecOutput('cosign', ['-d', 'verify', '--experimental-oci11', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', `${tag}@${digest}`], {
-                    ignoreReturnCode: true
-                  }).then(res => {
-                    if (res.exitCode != 0) {
-                      core.setFailed(`Verification failed for ${tag}@${digest}`);
-                    }
-                  });
+            for (const digest of digests) {
+              const image = `${core.getInput('image-name')}@${digest}`;
+              await core.group(`Verifying ${image}`, async () => {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                await exec.getExecOutput('cosign', ['-d', 'verify', '--experimental-oci11', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', image], {
+                  ignoreReturnCode: true
+                }).then(res => {
+                  if (res.exitCode != 0) {
+                    core.setFailed(`Verification failed for ${image}`);
+                  }
                 });
-              }
+              });
             }
       -
         name: Create manifest
