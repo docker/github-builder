@@ -196,8 +196,8 @@ jobs:
                   await exec.getExecOutput('cosign', ['-d', 'verify', '--experimental-oci11', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', `${tag}@${digest}`], {
                     ignoreReturnCode: true
                   }).then(res => {
-                    if (res.stderr.length > 0 && res.exitCode != 0) {
-                      core.warning(`Verification failed for ${tag}@${digest}: ${res.stderr}`);
+                    if (res.exitCode != 0) {
+                      core.setFailed(`Verification failed for ${tag}@${digest}`);
                     }
                   });
                 });
