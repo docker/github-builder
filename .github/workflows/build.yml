@@ -192,6 +192,7 @@ jobs:
             for (const tag of tags) {
               for (const digest of digests) {
                 await core.group(`Verifying ${tag}@${digest}`, async () => {
+                  await new Promise(resolve => setTimeout(resolve, 3000));
                   await exec.getExecOutput('cosign', ['-d', 'verify', '--experimental-oci11', '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com', `${tag}@${digest}`], {
                     ignoreReturnCode: true
                   }).then(res => {
