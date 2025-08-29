@@ -149,7 +149,10 @@ jobs:
           script: |
             let manifest = {};
             await core.group(`Get manifest`, async () => {
-              await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', `${core.getInput('image-name')}@${core.getInput('image-digest')}`, '--format', '{{json .Manifest}}'], {
+              await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect',
+                `${core.getInput('image-name')}@${core.getInput('image-digest')}`,
+                '--format', '{{json .Manifest}}'
+              ], {
                 ignoreReturnCode: true
               }).then(res => {
                 if (res.stderr.length > 0 && res.exitCode != 0) {
@@ -184,7 +187,12 @@ jobs:
                 images.push(`${tag}@${digest}`);
               }
             }
-            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes', '--oidc-provider', 'github-actions', '--oidc-issuer', 'https://token.actions.githubusercontent.com', '--registry-referrers-mode', 'oci-1-1', ...images], {
+            await exec.getExecOutput('cosign', ['-d', 'sign', '--yes',
+              '--oidc-provider', 'github-actions',
+              '--oidc-issuer', 'https://token.actions.githubusercontent.com',
+              '--registry-referrers-mode', 'oci-1-1',
+              ...images
+            ], {
               ignoreReturnCode: true
             }).then(res => {
               if (res.stderr.length > 0 && res.exitCode != 0) {
