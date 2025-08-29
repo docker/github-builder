@@ -16,7 +16,7 @@ on:
       meta-image:
         type: string
         description: "Image to use as base name for tags"
-        required: true
+        required: false
       meta-tags:
         type: string
         description: "List of tags as key-value pair attributes"
@@ -52,7 +52,7 @@ on:
         required: false
       build-output:
         type: string
-        description: "Build outout destination (one of cacheonly, registry)"
+        description: "Build output destination (one of cacheonly, registry, local)"
         default: 'cacheonly'
         required: false
       build-platforms:
@@ -71,6 +71,9 @@ on:
         description: "GitHub Token used to authenticate against a repository for Git context"
         required: false
 
+env:
+  LOCAL_OUTPUT_DIR: /tmp/buildx-output
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -84,22 +87,29 @@ jobs:
         id: prepare
         uses: actions/github-script@v7
         env:
+          INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_OUTPUT_DIR }}
           INPUT_META-IMAGE: ${{ inputs.meta-image }}
           INPUT_BUILD-OUTPUT: ${{ inputs.build-output }}
         with:
           script: |
+            const localOutputDir = core.getInput('local-output-dir');
             const metaImage = core.getMultilineInput('meta-image');
             const buildOutput = core.getInput('build-output');
             
-            if (core.getMultilineInput('meta-image').length != 1) {
-              core.setFailed('Only one meta-image is allowed');
-            }
             switch (buildOutput) {
               case 'cacheonly':
                 core.setOutput('output', 'type=cacheonly');
                 break;
               case 'registry':
+                if (metaImage.length == 0) {
+                  core.setFailed('meta-image is required when build-output is registry');
+                } else if (metaImage.length > 1) {
+                  core.setFailed('Only one meta-image is supported');
+                }
                 core.setOutput('output', `type=registry,"name=${metaImage[0]}",oci-artifact=true,push-by-digest=true,name-canonical=true`);
+                break;
+              case 'local':
+                core.setOutput('output', `type=local,dest=${localOutputDir}`);
                 break;
               default:
                 core.setFailed(`Invalid build-output: ${buildOutput}`);
@@ -109,6 +119,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       -
         name: Login to registry
+        if: ${{ inputs.build-output == 'registry' }}
         uses: crazy-max/docker-login-action@dockerhub-oidc
         with:
           registry: ${{ inputs.login-registry }}
@@ -118,6 +129,7 @@ jobs:
       -
         name: Docker meta
         id: meta
+        if: ${{ inputs.build-output == 'registry' }}
         uses: docker/metadata-action@v5
         with:
           images: ${{ inputs.meta-image }}
@@ -133,6 +145,7 @@ jobs:
           build-args: ${{ inputs.build-args }}
           platforms: ${{ inputs.build-platforms }}
           outputs: ${{ steps.prepare.outputs.output }}
+          provenance: mode=max
           sbom: ${{ inputs.build-sbom }}
           labels: ${{ inputs.set-meta-labels && steps.meta.outputs.labels || '' }}
           annotations: ${{ inputs.set-meta-annotations && steps.meta.outputs.annotations || '' }}
@@ -170,8 +183,8 @@ jobs:
         name: Install cosign
         uses: sigstore/cosign-installer@v3
       -
-        name: Sign with GitHub OIDC Token
-        if: ${{ inputs.build-output != 'cacheonly' }}
+        name: Sign attestation manifest (registry)
+        if: ${{ inputs.build-output == 'registry' }}
         uses: actions/github-script@v7
         env:
           INPUT_TAGS: ${{ steps.meta.outputs.tags }}
@@ -200,8 +213,41 @@ jobs:
               }
             });
       -
-        name: Verify signatures
-        if: ${{ inputs.build-output != 'cacheonly' }}
+        name: Sign attestation manifest (local)
+        if: ${{ inputs.build-output == 'local' }}
+        uses: actions/github-script@v7
+        env:
+          INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_OUTPUT_DIR }}
+          COSIGN_EXPERIMENTAL: 1
+        with:
+          script: |
+            const localOutputDir = core.getInput('local-output-dir');
+            
+            const globber = await glob.create([`${localOutputDir}/provenance.json`, `${localOutputDir}/sbom*spdx.json`].join('\n'));
+            const attestations = await globber.glob();
+            if (attestations.length == 0) {
+              core.setFailed('No attestation files found');
+              return;
+            }
+            
+            for (const attestation of attestations) {
+              const res = await exec.getExecOutput('cosign', [
+                '-d', 'sign-blob', '--yes',
+                '--oidc-provider', 'github-actions',
+                '--oidc-issuer', 'https://token.actions.githubusercontent.com',
+                '--output-signature', `${attestation}.sig`,
+                '--output-certificate', `${attestation}.crt`,
+                attestation
+              ], {
+                ignoreReturnCode: true
+              });
+              if (res.stderr.length > 0 && res.exitCode != 0) {
+                throw new Error(res.stderr);
+              }
+            }
+      -
+        name: Verify signatures (registry)
+        if: ${{ inputs.build-output == 'registry' }}
         uses: actions/github-script@v7
         env:
           INPUT_IMAGE-NAME: ${{ inputs.meta-image }}
@@ -238,6 +284,39 @@ jobs:
               }
             }
       -
+        name: Verify signatures (local)
+        if: ${{ inputs.build-output == 'local' }}
+        uses: actions/github-script@v7
+        env:
+          INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_OUTPUT_DIR }}
+          COSIGN_EXPERIMENTAL: 1
+        with:
+          script: |
+            const localOutputDir = core.getInput('local-output-dir');
+            
+            const globber = await glob.create([`${localOutputDir}/provenance.json`, `${localOutputDir}/sbom*spdx.json`].join('\n'));
+            const attestations = await globber.glob();
+            if (attestations.length == 0) {
+              core.setFailed('No attestation files found');
+              return;
+            }
+            
+            for (const attestation of attestations) {
+              const res = await exec.getExecOutput('cosign', [
+                '-d', 'verify-blob',
+                '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`,
+                '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
+                '--signature', `${attestation}.sig`,
+                '--certificate', `${attestation}.crt`,
+                attestation
+              ], {
+                ignoreReturnCode: true
+              });
+              if (res.stderr.length > 0 && res.exitCode != 0) {
+                throw new Error(res.stderr);
+              }
+            }
+      -
         name: Create manifest
         if: ${{ inputs.build-output == 'registry' }}
         uses: actions/github-script@v7
@@ -258,3 +337,16 @@ jobs:
                 throw new Error(res.stderr);
               }
             });
+      -
+        name: List output
+        if: ${{ inputs.build-output == 'local' }}
+        run: |
+          tree -nh ${{ env.LOCAL_OUTPUT_DIR }}
+      -
+        name: Upload artifact
+        if: ${{ inputs.build-output == 'local' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-github-builder-output
+          path: ${{ env.LOCAL_OUTPUT_DIR }}
+          if-no-files-found: error
