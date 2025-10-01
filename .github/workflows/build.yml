@@ -216,7 +216,7 @@ jobs:
           script: |
             const localOutputDir = core.getInput('local-output-dir');
             
-            const globber = await glob.create([`${localOutputDir}/provenance.json`, `${localOutputDir}/sbom*spdx.json`].join('\n'));
+            const globber = await glob.create([`${localOutputDir}/**/provenance.json`, `${localOutputDir}/**/sbom*spdx.json`].join('\n'));
             const attestations = await globber.glob();
             if (attestations.length == 0) {
               core.setFailed('No attestation files found');
@@ -287,7 +287,7 @@ jobs:
           script: |
             const localOutputDir = core.getInput('local-output-dir');
             
-            const globber = await glob.create([`${localOutputDir}/provenance.json`, `${localOutputDir}/sbom*spdx.json`].join('\n'));
+            const globber = await glob.create([`${localOutputDir}/**/provenance.json`, `${localOutputDir}/**/sbom*spdx.json`].join('\n'));
             const attestations = await globber.glob();
             if (attestations.length == 0) {
               core.setFailed('No attestation files found');
