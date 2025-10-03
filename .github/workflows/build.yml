@@ -107,6 +107,8 @@ jobs:
         with:
           version: latest
           buildkitd-flags: --debug
+          driver-opts: |
+            image=moby/buildkit:latest
       -
         name: Login to registry
         if: ${{ inputs.build-output == 'registry' }}
