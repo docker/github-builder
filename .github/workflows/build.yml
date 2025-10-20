@@ -249,6 +249,7 @@ jobs:
                 '-d', 'attest-blob', '--yes',
                 '--oidc-provider', 'github-actions',
                 '--oidc-issuer', 'https://token.actions.githubusercontent.com',
+                '--new-bundle-format',
                 '--predicate', attestation,
                 '--bundle', `${afn}.sigstore.json`,
                 '--output-file', `${afn}.signed.json`,
@@ -323,6 +324,7 @@ jobs:
                 '-d', 'verify-blob-attestation',
                 '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`,
                 '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
+                '--new-bundle-format',
                 '--bundle', `${afn}.sigstore.json`,
                 attestation
               ], {
