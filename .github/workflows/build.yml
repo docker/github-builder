@@ -107,8 +107,6 @@ jobs:
         with:
           version: https://github.com/docker/buildx.git#refs/pull/3453/merge
           buildkitd-flags: --debug
-          driver-opts: |
-            image=moby/buildkit:latest
       -
         name: Login to registry
         if: ${{ inputs.build-output == 'registry' }}
