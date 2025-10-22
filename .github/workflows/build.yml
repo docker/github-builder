@@ -304,42 +304,6 @@ jobs:
             const inpBundlePathArm64 = core.getInput('bundle-path-arm64');
             fs.copyFileSync(inpBundlePathAmd64,  `${inpLocalOutputDir}/linux_amd64/provenance.sigstore.json`);
             fs.copyFileSync(inpBundlePathArm64,  `${inpLocalOutputDir}/linux_arm64/provenance.sigstore.json`);
-            
-            const platformFolders = fs.readdirSync(inpLocalOutputDir, { withFileTypes: true }).filter(dirent => dirent.isDirectory()).map(dirent => dirent.name);
-            for (const platformFolder of platformFolders) {
-              const baseDir = `${inpLocalOutputDir}/${platformFolder}`;
-              const res = await exec.getExecOutput('cosign', [
-                '-d', 'verify-blob-attestation',
-                '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`,
-                '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
-                '--new-bundle-format',
-                '--bundle', `${baseDir}/provenance.sigstore.json`,
-                `${baseDir}/provenance.json`
-              ], {
-                ignoreReturnCode: true
-              });
-              if (res.stderr.length > 0 && res.exitCode != 0) {
-                throw new Error(res.stderr);
-              }
-              const artifactsGlobber = await glob.create(`${baseDir}/**/*`);
-              const artifacts = await artifactsGlobber.glob();
-              const filteredArtifacts = artifacts.filter(p => fs.statSync(p).isFile() && !/provenance\.json$/.test(p) && !/sbom.*spdx\.json$/.test(p) && !/\.sigstore\.json$/.test(p));
-              for (const artifact of filteredArtifacts) {
-                const res = await exec.getExecOutput('cosign', [
-                  '-d', 'verify-blob-attestation',
-                  '--certificate-identity-regexp', `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`,
-                  '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
-                  '--new-bundle-format',
-                  '--bundle', `${baseDir}/provenance.sigstore.json`,
-                  artifact
-                ], {
-                  ignoreReturnCode: true
-                });
-                if (res.stderr.length > 0 && res.exitCode != 0) {
-                  throw new Error(res.stderr);
-                }
-              }
-            }
       -
         name: Create manifest
         if: ${{ inputs.build-output == 'registry' }}
