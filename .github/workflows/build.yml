@@ -231,21 +231,23 @@ jobs:
       -
         name: Signing artifacts amd64 (local)
         if: ${{ inputs.build-output == 'local' }}
-        uses: actions/attest@v2
+        uses: crazy-max/actions-attest@skip-write
         id: attest_amd64
         with:
           subject-path: "${{ env.LOCAL_OUTPUT_DIR }}/linux_amd64/**/*"
           predicate-type: "https://slsa.dev/provenance/v1"
           predicate-path: "${{ env.LOCAL_OUTPUT_DIR }}/linux_amd64/provenance.json"
+          skip-write: true
       -
         name: Signing artifacts arm64 (local)
         if: ${{ inputs.build-output == 'local' }}
-        uses: actions/attest@v2
+        uses: crazy-max/actions-attest@skip-write
         id: attest_arm64
         with:
           subject-path: "${{ env.LOCAL_OUTPUT_DIR }}/linux_arm64/**/*"
           predicate-type: "https://slsa.dev/provenance/v1"
           predicate-path: "${{ env.LOCAL_OUTPUT_DIR }}/linux_arm64/provenance.json"
+          skip-write: true
       -
         name: Verify signatures (registry)
         if: ${{ inputs.build-output == 'registry' }}
