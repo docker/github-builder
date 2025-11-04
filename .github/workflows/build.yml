@@ -23,6 +23,12 @@ on:
         description: "Set metadata-action labels"
         required: false
         default: false
+      setup-qemu:
+        type: boolean
+        description: "Install QEMU static binaries"
+        required: false
+        default: true
+      # same as docker/metadata-action inputs (minus sep-tags, sep-labels, sep-annotations, bake-target)
       meta-image:
         type: string
         description: "Image to use as base name for tags"
@@ -42,6 +48,11 @@ on:
       meta-annotations:
         type: string
         description: "List of custom annotations"
+        required: false
+      # same as docker/setup-qemu-action inputs (minus platforms, cache-image)
+      qemu-image:
+        type: string
+        description: "QEMU static binaries Docker image (e.g. tonistiigi/binfmt:latest)"
         required: false
       build-args:
         type: string
@@ -125,6 +136,12 @@ jobs:
               core.setOutput('cache-from', `type=gha,scope=docker-github-builder`);
               core.setOutput('cache-to', `type=gha,scope=docker-github-builder,mode=${inpCacheMode}`);
             }
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: ${{ inputs.setup-qemu }}
+        with:
+          image: ${{ inputs.qemu-image }}
       -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
