@@ -6,7 +6,7 @@
 This repository provides official Docker-maintained [reusable GitHub Actions workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)
 to securely build container images using Docker best practices. The workflows
 sign BuildKit-generated SLSA-compliant provenance attestations and align with
-the principles behind [Docker Hardened Images](https://docs.docker.com/dhi/how-to/use/),
+the principles behind [Docker Hardened Images](https://docs.docker.com/dhi/),
 enabling open source projects to follow a seamless path toward higher levels of
 security and trust.
 

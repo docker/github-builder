@@ -1,0 +1,136 @@
+name: .test
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
+  pull_request:
+
+jobs:
+  build-aws-single:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      meta-images: |
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=ghbuilder-${{ github.run_id }}
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      build-sbom: true
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-aws:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      meta-images: |
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=ghbuilder-${{ github.run_id }}
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      build-sbom: true
+      build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-ghcr:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=${{ github.run_id }}
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      build-sbom: true
+      build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-dockerhub-stage:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      meta-images: registry-1-stage.docker.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=${{ github.run_id }}
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      build-sbom: true
+      build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: registry-1-stage.docker.io
+          username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  build-ghcr-and-aws:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      meta-images: |
+        ghcr.io/docker/github-builder-test
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=${{ github.run_id }}
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      build-sbom: true
+      build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-local:
+    uses: .github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      build-file: test/hello.Dockerfile
+      build-output: ${{ github.event_name != 'pull_request' && 'local' || 'cacheonly' }}
+      build-sbom: true
+      build-platforms: linux/amd64,linux/arm64
