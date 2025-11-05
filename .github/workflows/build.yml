@@ -1,0 +1,345 @@
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      cache:
+        type: boolean
+        description: "Enable cache to GitHub Actions cache backend"
+        required: false
+        default: false
+      cache-mode:
+        type: string
+        description: "Cache layers to export if cache enabled (min or max)"
+        required: false
+        default: 'min'
+      set-meta-annotations:
+        type: boolean
+        description: "Set metadata-action annotations"
+        required: false
+        default: false
+      set-meta-labels:
+        type: boolean
+        description: "Set metadata-action labels"
+        required: false
+        default: false
+      setup-qemu:
+        type: boolean
+        description: "Install QEMU static binaries"
+        required: false
+        default: true
+      # same as docker/metadata-action inputs (minus sep-tags, sep-labels, sep-annotations, bake-target)
+      meta-images:
+        type: string
+        description: "List of images to use as base name for tags"
+        required: false
+      meta-tags:
+        type: string
+        description: "List of tags as key-value pair attributes"
+        required: false
+      meta-flavor:
+        type: string
+        description: "Flavors to apply"
+        required: false
+      meta-labels:
+        type: string
+        description: "List of custom labels"
+        required: false
+      meta-annotations:
+        type: string
+        description: "List of custom annotations"
+        required: false
+      # same as docker/setup-qemu-action inputs (minus platforms, cache-image)
+      qemu-image:
+        type: string
+        description: "QEMU static binaries Docker image (e.g. tonistiigi/binfmt:latest)"
+        required: false
+      # same as docker/build-push-action inputs
+      build-annotations:
+        type: string
+        description: "List of annotation to set to the image"
+        required: false
+      build-args:
+        type: string
+        description: "List of build-time variables"
+        required: false
+      build-file:
+        type: string
+        description: "Path to the Dockerfile"
+        required: false
+      build-labels:
+        type: string
+        description: "List of metadata for an image"
+        required: false
+      build-output:
+        type: string
+        description: "Build output destination (one of cacheonly, registry, local)"
+        default: 'cacheonly'
+        required: false
+      build-platforms:
+        type: string
+        description: "List of target platforms to build"
+        required: false
+      build-pull:
+        type: boolean
+        description: "Always attempt to pull all referenced images"
+        required: false
+        default: false
+      build-sbom:
+        type: string
+        description: "Generate SBOM attestation for the build (shorthand for --attest=type=sbom)"
+        required: false
+      build-shm-size:
+        type: string
+        description: "Size of /dev/shm (e.g., 2g)"
+        required: false
+      build-target:
+        type: string
+        description: "Sets the target stage to build"
+        required: false
+      build-ulimit:
+        type: string
+        description: "Ulimit options (e.g., nofile=1024:1024)"
+        required: false
+    secrets:
+      registry-auths:
+        description: "Registry authentication details as YAML objects"
+        required: false
+      github-token:
+        description: "GitHub Token used to authenticate against a repository for Git context"
+        required: false
+
+env:
+  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.67.0"
+  COSIGN_VERSION: "v3.0.2"
+  LOCAL_EXPORT_DIR: "/tmp/buildx-output"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # needed for signing the images with GitHub OIDC Token
+      packages: write # needed to push images to GitHub Container Registry
+    steps:
+      -
+        name: Docker meta
+        id: meta
+        if: ${{ inputs.build-output == 'registry' }}
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.meta-images }}
+          tags: ${{ inputs.meta-tags }}
+          flavor: ${{ inputs.meta-flavor }}
+          labels: ${{ inputs.meta-labels }}
+          annotations: ${{ inputs.meta-annotations }}
+      -
+        name: Prepare
+        id: prepare
+        uses: actions/github-script@v7
+        env:
+          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_CACHE: ${{ inputs.cache }}
+          INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_META-IMAGES: ${{ inputs.meta-images }}
+          INPUT_BUILD-OUTPUT: ${{ inputs.build-output }}
+          INPUT_BUILD-ANNOTATIONS: ${{ inputs.build-annotations }}
+          INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
+          INPUT_META-ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
+          INPUT_BUILD-LABELS: ${{ inputs.build-labels }}
+          INPUT_SET-META-LABELS: ${{ inputs.set-meta-labels }}
+          INPUT_META-LABELS: ${{ steps.meta.outputs.labels }}
+          INPUT_BUILD-TARGET: ${{ inputs.build-target }}
+        with:
+          script: |
+            const inpLocalExportDir = core.getInput('local-export-dir');
+            const inpCache = core.getBooleanInput('cache');
+            const inpCacheMode = core.getInput('cache-mode');
+            const inpMetaImages = core.getMultilineInput('meta-images');
+            const inpBuildOutput = core.getInput('build-output');
+            const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
+            const inpBuildAnnotations = core.getMultilineInput('build-annotations');
+            const inpMetaAnnotations = core.getMultilineInput('meta-annotations');
+            const inpSetMetaLabels = core.getBooleanInput('set-meta-labels');
+            const inpBuildLabels = core.getMultilineInput('build-labels');
+            const inpMetaLabels = core.getMultilineInput('meta-labels');
+            const inpBuildTarget = core.getInput('build-target');
+            
+            switch (inpBuildOutput) {
+              case 'cacheonly':
+                core.setOutput('output', 'type=cacheonly');
+                break;
+              case 'registry':
+                if (inpMetaImages.length == 0) {
+                  core.setFailed('meta-images is required when build-output is registry');
+                }
+                core.setOutput('output', `type=registry,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true`);
+                break;
+              case 'local':
+                core.setOutput('output', `type=local,dest=${inpLocalExportDir}`);
+                break;
+              default:
+                core.setFailed(`Invalid build-output: ${inpBuildOutput}`);
+            }
+            
+            if (inpCache) {
+              core.setOutput('cache-from', `type=gha,scope=docker-github-builder`);
+              core.setOutput('cache-to', `type=gha,scope=docker-github-builder,mode=${inpCacheMode}`);
+            }
+            
+            if (inpSetMetaAnnotations && inpMetaAnnotations.length > 0) {
+              inpBuildAnnotations.push(...inpMetaAnnotations);
+            }
+            core.setOutput('annotations', inpBuildAnnotations.join('\n'));
+            
+            if (inpSetMetaLabels && inpMetaLabels.length > 0) {
+              inpBuildLabels.push(...inpMetaLabels);
+            }
+            core.setOutput('labels', inpBuildLabels.join('\n'));
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: ${{ inputs.setup-qemu }}
+        with:
+          image: ${{ inputs.qemu-image }}
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: https://github.com/docker/buildx.git#62857022a08552bee5cad0c3044a9a3b185f0b32
+          buildkitd-flags: --debug
+      -
+        name: Login to registry
+        if: ${{ inputs.build-output == 'registry' }}
+        # TODO: switch to docker/login-action when OIDC is supported
+        uses: crazy-max/docker-login-action@dockerhub-oidc
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
+        name: Build
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          annotations: ${{ steps.prepare.outputs.annotations }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: ${{ steps.prepare.outputs.cache-from }}
+          cache-to: ${{ steps.prepare.outputs.cache-to }}
+          file: ${{ inputs.build-file }}
+          labels: ${{ steps.prepare.outputs.labels }}
+          outputs: ${{ steps.prepare.outputs.output }}
+          platforms: ${{ inputs.build-platforms }}
+          provenance: mode=max,version=v1
+          pull: ${{ inputs.build-pull }}
+          sbom: ${{ inputs.build-sbom }}
+          shm-size: ${{ inputs.build-shm-size }}
+          target: ${{ inputs.build-target }}
+          ulimit: ${{ inputs.build-ulimit }}
+          github-token: ${{ secrets.github-token || github.token }}
+        env:
+          BUILDKIT_MULTI_PLATFORM: 1
+      -
+        name: Install @docker/actions-toolkit
+        uses: actions/github-script@v8
+        env:
+          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+        with:
+          script: |
+            await exec.exec('npm', ['install', '--prefer-offline', '--no-audit', core.getInput('dat-module')]);
+      -
+        name: Install Cosign
+        uses: actions/github-script@v8
+        env:
+          INPUT_COSIGN-VERSION: ${{ env.COSIGN_VERSION }}
+        with:
+          script: |
+            const { Cosign } = require('@docker/actions-toolkit/lib/cosign/cosign');
+            const { Install } = require('@docker/actions-toolkit/lib/cosign/install');
+            
+            const cosignInstall = new Install();
+            const cosignBinPath = await cosignInstall.download(core.getInput('cosign-version'), false, true);
+            await cosignInstall.install(cosignBinPath);
+            
+            const cosign = new Cosign();
+            await cosign.printVersion();
+      -
+        name: Signing attestation manifests
+        if: ${{ inputs.build-output == 'registry' }}
+        uses: actions/github-script@v8
+        env:
+          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
+          INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
+        with:
+          script: |
+            const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
+            
+            const inpImageNames = core.getMultilineInput('image-names');
+            const inpImageDigest = core.getInput('image-digest');
+            
+            const sigstore = new Sigstore();
+            const signResults = await sigstore.signAttestationManifests({
+              imageNames: inpImageNames,
+              imageDigest: inpImageDigest
+            });
+            
+            const verifyResults = await sigstore.verifySignedManifests(
+              { certificateIdentityRegexp: `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$` },
+              signResults
+            );
+      -
+        name: Signing local artifacts
+        if: ${{ inputs.build-output == 'local' }}
+        uses: actions/github-script@v8
+        env:
+          INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+        with:
+          script: |
+            const path = require('path');
+            const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
+            const inplocalExportDir = core.getInput('local-output-dir');
+            
+            const sigstore = new Sigstore();
+            const signResults = await sigstore.signProvenanceBlobs({
+              localExportDir: inplocalExportDir
+            });
+            
+            const verifyResults = await sigstore.verifySignedArtifacts(
+              { certificateIdentityRegexp: `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$` },
+              signResults
+            );
+      -
+        name: Create manifest
+        if: ${{ inputs.build-output == 'registry' }}
+        uses: actions/github-script@v7
+        env:
+          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
+          INPUT_TAG-NAMES: ${{ steps.meta.outputs.tag-names }}
+          INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
+        with:
+          script: |
+            for (const imageName of core.getMultilineInput('image-names')) {
+              let createArgs = ['buildx', 'imagetools', 'create'];
+              for (const tag of core.getMultilineInput('tag-names')) {
+                createArgs.push('-t', `${imageName}:${tag}`);
+              }
+              createArgs.push(core.getInput('image-digest'));
+              await exec.getExecOutput('docker', createArgs, {
+                ignoreReturnCode: true
+              }).then(res => {
+                if (res.stderr.length > 0 && res.exitCode != 0) {
+                  throw new Error(res.stderr);
+                }
+              });
+            }
+      -
+        name: List local output
+        if: ${{ inputs.build-output == 'local' }}
+        run: |
+          tree -nh ${{ env.LOCAL_EXPORT_DIR }}
+      -
+        name: Upload artifact
+        if: ${{ inputs.build-output == 'local' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-github-builder-assets
+          path: ${{ env.LOCAL_EXPORT_DIR }}
+          if-no-files-found: error
