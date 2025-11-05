@@ -18,7 +18,7 @@ on:
 
 jobs:
   build-aws-single:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
@@ -38,7 +38,7 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   build-aws:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
@@ -59,7 +59,7 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   build-ghcr:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
@@ -79,7 +79,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
   build-dockerhub-stage:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
@@ -99,7 +99,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
 
   build-ghcr-and-aws:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
@@ -124,7 +124,7 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   build-local:
-    uses: .github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
