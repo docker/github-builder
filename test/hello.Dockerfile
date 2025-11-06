@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM alpine AS base
 ARG TARGETPLATFORM
 RUN echo "Hello, World! This is ${TARGETPLATFORM}" > /hello.txt
