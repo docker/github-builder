@@ -221,8 +221,7 @@ jobs:
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          # TODO: switch to latest once Buildx v0.30.0 is released
-          version: v0.30.0-rc2
+          version: latest
           buildkitd-flags: --debug
       -
         name: Login to registry
