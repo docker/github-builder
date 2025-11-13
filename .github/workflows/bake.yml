@@ -18,6 +18,11 @@ on:
         description: "Build output destination (one of cacheonly, registry, local)"
         default: 'cacheonly'
         required: false
+      artifact-name:
+        type: string
+        description: "Name of the uploaded artifact (for local output)"
+        required: false
+        default: 'docker-github-builder-assets'
       envs:
         type: string
         description: "Environment variables to set"
@@ -121,7 +126,6 @@ env:
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.67.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
-  LOCAL_ARTIFACT_NAME: "docker-github-builder-assets"
 
 jobs:
   build:
@@ -129,7 +133,7 @@ jobs:
     outputs:
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
-      artifact-name: ${{ env.LOCAL_ARTIFACT_NAME }}
+      artifact-name: ${{ inputs.artifact-name }}
     permissions:
       contents: read
       id-token: write # needed for signing the images with GitHub OIDC Token
@@ -445,6 +449,6 @@ jobs:
         if: ${{ inputs.output == 'local' }}
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ env.LOCAL_ARTIFACT_NAME }}
+          name: ${{ inputs.artifact-name }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
           if-no-files-found: error

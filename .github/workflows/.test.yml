@@ -184,6 +184,7 @@ jobs:
       id-token: write
     with:
       output: ${{ github.event_name != 'pull_request' && 'local' || 'cacheonly' }}
+      artifact-name: build-output
       build-file: test/hello.Dockerfile
       build-sbom: true
       build-platforms: linux/amd64,linux/arm64
@@ -283,6 +284,7 @@ jobs:
       context: test
       target: hello-cross
       output: ${{ github.event_name != 'pull_request' && 'local' || 'cacheonly' }}
+      artifact-name: bake-output
       bake-sbom: true
 
   bake-local-verify:
