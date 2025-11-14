@@ -52,34 +52,21 @@ on:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  # Optional job to verify the pushed images' signatures. This is already done
+  # in the `build` job and can be omitted. It's provided here as an example of
+  # how to use the `verify.yml` reusable workflow.
   build-verify:
-    runs-on: ubuntu-latest
+    uses: docker/github-builder-experimental/.github/workflows/verify.yml@main
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.build.outputs.cosign-version }}
-      -
-        name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
+    with:
+      builder-outputs: ${{ toJSON(needs.build.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.build.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            for (const cmd of core.getMultilineInput('cosign-verify-commands')) {
-              await exec.exec(cmd);
-            }
 ```
 
 You can find the list of available inputs in [`.github/workflows/build.yml`](.github/workflows/build.yml).
@@ -119,34 +106,21 @@ on:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  # Optional job to verify the pushed images' signatures. This is already done
+  # in the `bake` job and can be omitted. It's provided here as an example of
+  # how to use the `verify.yml` reusable workflow.
   bake-verify:
-    runs-on: ubuntu-latest
+    uses: docker/github-builder-experimental/.github/workflows/verify.yml@main
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.bake.outputs.cosign-version }}
-      -
-        name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
+    with:
+      builder-outputs: ${{ toJSON(needs.bake.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.bake.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            for (const cmd of core.getMultilineInput('cosign-verify-commands')) {
-              await exec.exec(cmd);
-            }
 ```
 
 You can find the list of available inputs in [`.github/workflows/bake.yml`](.github/workflows/bake.yml).

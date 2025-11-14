@@ -127,6 +127,9 @@ on:
       artifact-name:
         description: Name of the uploaded artifact (for local output)
         value: ${{ jobs.build.outputs.artifact-name }}
+      output-type:
+        description: Build output type
+        value: ${{ jobs.build.outputs.output-type }}
 
 env:
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.67.0"
@@ -140,6 +143,7 @@ jobs:
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
       artifact-name: ${{ inputs.artifact-name }}
+      output-type: ${{ inputs.output }}
     permissions:
       contents: read
       id-token: write # for signing attestation manifests with GitHub OIDC Token

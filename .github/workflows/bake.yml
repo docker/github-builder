@@ -129,6 +129,9 @@ on:
       artifact-name:
         description: Name of the uploaded artifact (for local output)
         value: ${{ jobs.finalize.outputs.artifact-name }}
+      output-type:
+        description: Build output type
+        value: ${{ jobs.finalize.outputs.output-type }}
 
 env:
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.67.0"
@@ -635,6 +638,7 @@ jobs:
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.set.outputs.cosign-verify-commands }}
       artifact-name: ${{ inputs.artifact-name }}
+      output-type: ${{ inputs.output }}
     needs:
       - build
     steps:

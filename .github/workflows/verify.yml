@@ -1,0 +1,70 @@
+name: verify
+
+on:
+  workflow_call:
+    inputs:
+      builder-outputs:
+        type: string
+        description: "JSON build outputs from Docker GitHub Builder reusable workflows"
+        required: true
+    secrets:
+      registry-auths:
+        description: "Registry authentication details as YAML objects"
+        required: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Extract builder outputs
+        id: vars
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ inputs.builder-outputs }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+            
+            const cosignVersion = builderOutputs['cosign-version'];
+            const cosignVerifyCommands = builderOutputs['cosign-verify-commands'];
+            const artifactName = builderOutputs['artifact-name'];
+            const outputType = builderOutputs['output-type'];
+            if (!cosignVersion || !cosignVerifyCommands || !artifactName || !outputType) {
+              throw new Error('Missing required build outputs for verification');
+            }
+            
+            core.setOutput('cosign-version', cosignVersion);
+            core.setOutput('cosign-verify-commands', cosignVerifyCommands);
+            core.setOutput('artifact-name', artifactName);
+            core.setOutput('output-type', outputType);
+      -
+        name: Install Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: ${{ steps.vars.outputs.cosign-version }}
+      -
+        name: Login to registry
+        if: ${{ steps.vars.outputs.output-type == 'registry' }}
+        # TODO: switch to docker/login-action when OIDC is supported
+        uses: crazy-max/docker-login-action@dockerhub-oidc
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
+        name: Download artifact
+        if: ${{ steps.vars.outputs.output-type == 'local' }}
+        uses: actions/download-artifact@v5
+        with:
+          pattern: ${{ steps.vars.outputs.artifact-name }}*
+          merge-multiple: true
+      -
+        name: Verify signatures
+        uses: actions/github-script@v8
+        env:
+          INPUT_COSIGN-VERIFY-COMMANDS: ${{ steps.vars.outputs.cosign-verify-commands }}
+        with:
+          script: |
+            for (const cmd of core.getMultilineInput('cosign-verify-commands')) {
+              await exec.exec(cmd);
+            }

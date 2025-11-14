@@ -39,6 +39,19 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  build-aws-single-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-aws-single
+    with:
+      builder-outputs: ${{ toJSON(needs.build-aws-single.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
   build-aws:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -63,37 +76,17 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   build-aws-verify:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build-aws
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.build-aws.outputs.cosign-version }}
-      -
-        name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: public.ecr.aws
+    with:
+      builder-outputs: ${{ toJSON(needs.build-aws.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERSION: ${{ needs.build-aws.outputs.cosign-version }}
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.build-aws.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            const cosignVersion = core.getInput('cosign-version');
-            core.info(`Cosign version used by Docker GitHub Builder: ${cosignVersion}`);
-            const cosignVerifyCommands = core.getMultilineInput('cosign-verify-commands');
-            for (const cmd of cosignVerifyCommands) {
-              await exec.exec(cmd);
-            }
 
   build-ghcr:
     uses: ./.github/workflows/build.yml
@@ -109,6 +102,19 @@ jobs:
       build-file: test/hello.Dockerfile
       build-sbom: true
       build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ghcr-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-ghcr
+    with:
+      builder-outputs: ${{ toJSON(needs.build-ghcr.outputs) }}
     secrets:
       registry-auths: |
         - registry: ghcr.io
@@ -135,6 +141,19 @@ jobs:
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
 
+  build-dockerhub-stage-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-dockerhub-stage
+    with:
+      builder-outputs: ${{ toJSON(needs.build-dockerhub-stage.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: registry-1-stage.docker.io
+          username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
   build-dockerhub-stage-oidc:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -149,6 +168,21 @@ jobs:
       build-file: test/hello.Dockerfile
       build-sbom: true
       build-platforms: linux/amd64,linux/arm64
+    secrets:
+      registry-auths: |
+        - registry: registry-1-stage.docker.io
+          username: docker:cdeb5882-30b7-4076-be92-bfdceb258e9c
+
+  build-dockerhub-stage-oidc-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    needs:
+      - build-dockerhub-stage-oidc
+    with:
+      builder-outputs: ${{ toJSON(needs.build-dockerhub-stage-oidc.outputs) }}
     secrets:
       registry-auths: |
         - registry: registry-1-stage.docker.io
@@ -179,6 +213,22 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  build-ghcr-and-aws-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-ghcr-and-aws
+    with:
+      builder-outputs: ${{ toJSON(needs.build-ghcr-and-aws.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
   build-local:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -193,35 +243,12 @@ jobs:
       build-platforms: linux/amd64,linux/arm64
 
   build-local-verify:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build-local
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.build-local.outputs.cosign-version }}
-      -
-        name: Download artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ needs.build-local.outputs.artifact-name }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERSION: ${{ needs.build-local.outputs.cosign-version }}
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.build-local.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            const cosignVersion = core.getInput('cosign-version');
-            core.info(`Cosign version used by Docker GitHub Builder: ${cosignVersion}`);
-            const cosignVerifyCommands = core.getMultilineInput('cosign-verify-commands');
-            for (const cmd of cosignVerifyCommands) {
-              await exec.exec(cmd);
-            }
+    with:
+      builder-outputs: ${{ toJSON(needs.build-local.outputs) }}
 
   build-local-single:
     uses: ./.github/workflows/build.yml
@@ -234,6 +261,50 @@ jobs:
       artifact-name: build-output-single
       build-file: test/hello.Dockerfile
       build-sbom: true
+
+  build-local-single-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-local-single
+    with:
+      builder-outputs: ${{ toJSON(needs.build-local-single.outputs) }}
+
+  bake-aws-single:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      context: test
+      target: hello
+      output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      cache: true
+      cache-scope: bake-aws
+      meta-images: |
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=bake-ghbuilder-single-${{ github.run_id }}
+      bake-sbom: true
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  bake-aws-single-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - bake-aws-single
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-aws-single.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws:
     uses: ./.github/workflows/bake.yml
@@ -259,37 +330,17 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-verify:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake-aws
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.bake-aws.outputs.cosign-version }}
-      -
-        name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: public.ecr.aws
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-aws.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERSION: ${{ needs.bake-aws.outputs.cosign-version }}
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.bake-aws.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            const cosignVersion = core.getInput('cosign-version');
-            core.info(`Cosign version used by Docker GitHub Builder: ${cosignVersion}`);
-            const cosignVerifyCommands = core.getMultilineInput('cosign-verify-commands');
-            for (const cmd of cosignVerifyCommands) {
-              await exec.exec(cmd);
-            }
 
   bake-ghcr-and-aws:
     uses: ./.github/workflows/bake.yml
@@ -319,37 +370,20 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-ghcr-and-aws-verify:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake-ghcr-and-aws
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.bake-ghcr-and-aws.outputs.cosign-version }}
-      -
-        name: Login to registry
-        uses: docker/login-action@v3
-        with:
-          registry: public.ecr.aws
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-ghcr-and-aws.outputs) }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        - registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERSION: ${{ needs.bake-ghcr-and-aws.outputs.cosign-version }}
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.bake-ghcr-and-aws.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            const cosignVersion = core.getInput('cosign-version');
-            core.info(`Cosign version used by Docker GitHub Builder: ${cosignVersion}`);
-            const cosignVerifyCommands = core.getMultilineInput('cosign-verify-commands');
-            for (const cmd of cosignVerifyCommands) {
-              await exec.exec(cmd);
-            }
 
   bake-local:
     uses: ./.github/workflows/bake.yml
@@ -366,36 +400,12 @@ jobs:
       bake-sbom: true
 
   bake-local-verify:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake-local
-    steps:
-      -
-        name: Install Cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
-        with:
-          cosign-release: ${{ needs.bake-local.outputs.cosign-version }}
-      -
-        name: Download artifacts
-        uses: actions/download-artifact@v5
-        with:
-          pattern: ${{ needs.bake-local.outputs.artifact-name }}*
-          merge-multiple: true
-      -
-        name: Verify signatures
-        uses: actions/github-script@v8
-        env:
-          INPUT_COSIGN-VERSION: ${{ needs.bake-local.outputs.cosign-version }}
-          INPUT_COSIGN-VERIFY-COMMANDS: ${{ needs.bake-local.outputs.cosign-verify-commands }}
-        with:
-          script: |
-            const cosignVersion = core.getInput('cosign-version');
-            core.info(`Cosign version used by Docker GitHub Builder: ${cosignVersion}`);
-            const cosignVerifyCommands = core.getMultilineInput('cosign-verify-commands');
-            for (const cmd of cosignVerifyCommands) {
-              await exec.exec(cmd);
-            }
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-local.outputs) }}
 
   bake-local-single:
     uses: ./.github/workflows/bake.yml
@@ -410,3 +420,11 @@ jobs:
       cache: true
       artifact-name: bake-output-single
       bake-sbom: true
+
+  bake-local-single-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - bake-local-single
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-local-single.outputs) }}
