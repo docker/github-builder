@@ -3,6 +3,15 @@ name: build
 on:
   workflow_call:
     inputs:
+      runs-on:
+        type: string
+        description: "Type of machine to run the jobs on similar to jobs.<job_id>.runs-on (defaults to best matching runner depending on target platform)"
+        required: false
+      context:
+        type: string
+        description: "Context to build from (defaults to repository root)"
+        required: false
+        default: .
       output:
         type: string
         description: "Build output destination (one of cacheonly, registry, local)"
@@ -13,6 +22,10 @@ on:
         description: "Name of the uploaded artifact (for local output)"
         required: false
         default: 'docker-github-builder-assets'
+      envs:
+        type: string
+        description: "Environment variables to set"
+        required: false
       cache:
         type: boolean
         description: "Enable cache to GitHub Actions cache backend"
@@ -20,7 +33,7 @@ on:
         default: false
       cache-scope:
         type: string
-        description: "Which scope cache object belongs to if cache enabled (default is target name if set)"
+        description: "Which scope cache object belongs to if cache enabled (defaults to target name if set)"
         required: false
       cache-mode:
         type: string
@@ -120,35 +133,138 @@ on:
     outputs:
       cosign-version:
         description: Cosign version used for verification
-        value: ${{ jobs.build.outputs.cosign-version }}
+        value: ${{ jobs.finalize.outputs.cosign-version }}
       cosign-verify-commands:
         description: Cosign verify commands
-        value: ${{ jobs.build.outputs.cosign-verify-commands }}
+        value: ${{ jobs.finalize.outputs.cosign-verify-commands }}
       artifact-name:
         description: Name of the uploaded artifact (for local output)
-        value: ${{ jobs.build.outputs.artifact-name }}
+        value: ${{ jobs.finalize.outputs.artifact-name }}
       output-type:
         description: Build output type
-        value: ${{ jobs.build.outputs.output-type }}
+        value: ${{ jobs.finalize.outputs.output-type }}
 
 env:
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.67.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
+  MATRIX_SIZE_LIMIT: "20"
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      cosign-version: ${{ env.COSIGN_VERSION }}
-      cosign-verify-commands: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
-      artifact-name: ${{ inputs.artifact-name }}
-      output-type: ${{ inputs.output }}
+  prepare:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
     permissions:
       contents: read
-      id-token: write # for signing attestation manifests with GitHub OIDC Token
-      packages: write # only used if pushing to GHCR but needs to be defined as caller must provide permissions ≥ to those used in the reusable workflow
+    outputs:
+      includes: ${{ steps.set.outputs.includes }}
     steps:
+      -
+        name: Install @docker/actions-toolkit
+        uses: actions/github-script@v8
+        env:
+          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+        with:
+          script: |
+            await exec.exec('npm', ['install', '--prefer-offline', '--no-audit', core.getInput('dat-module')]);
+      -
+        name: Set includes
+        id: set
+        uses: actions/github-script@v8
+        env:
+          INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
+          INPUT_RUNS-ON: ${{ inputs.runs-on }}
+          INPUT_BUILD-PLATFORMS: ${{ inputs.build-platforms }}
+        with:
+          script: |
+            const { Util } = require('@docker/actions-toolkit/lib/util');
+            
+            const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
+            
+            const inpRunsOn = core.getInput('runs-on');
+            const inpBuildPlatforms = Util.getInputList('build-platforms');
+            
+            await core.group(`Set includes`, async () => {
+              let includes = [];
+              if (inpBuildPlatforms.length > inpMatrixSizeLimit) {
+                throw new Error(`Platforms to build exceed matrix size limit of ${inpMatrixSizeLimit}`);
+              } else if (inpBuildPlatforms.length === 0) {
+                includes.push({
+                  index: 0,
+                  'runs-on': inpRunsOn || 'ubuntu-latest'
+                });
+              } else {
+                inpBuildPlatforms.forEach((platform, index) => {
+                  let runsOn = inpRunsOn;
+                  if (!runsOn) {
+                    runsOn = platform.startsWith('linux/arm') ? 'ubuntu-24.04-arm' : 'ubuntu-latest';
+                  }
+                  includes.push({
+                    index: index,
+                    platform: platform,
+                    'runs-on': runsOn
+                  });
+                });
+              }
+              core.info(JSON.stringify(includes, null, 2));
+              core.setOutput('includes', JSON.stringify(includes));
+            });
+
+  build:
+    runs-on: ${{ matrix.runs-on }}
+    needs:
+      - prepare
+    permissions:
+      contents: read
+      id-token: write # for signing attestation manifests and/or registry authentication with GitHub OIDC Token
+      packages: write # for pushing manifests to GHCR if needed
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.includes) }}
+    outputs:
+      # needs predefined outputs as we can't use dynamic ones atm: https://github.com/actions/runner/pull/2477
+      # 20 is the maximum number of platforms supported by our matrix strategy
+      result_0: ${{ steps.result.outputs.result_0 }}
+      result_1: ${{ steps.result.outputs.result_1 }}
+      result_2: ${{ steps.result.outputs.result_2 }}
+      result_3: ${{ steps.result.outputs.result_3 }}
+      result_4: ${{ steps.result.outputs.result_4 }}
+      result_5: ${{ steps.result.outputs.result_5 }}
+      result_6: ${{ steps.result.outputs.result_6 }}
+      result_7: ${{ steps.result.outputs.result_7 }}
+      result_8: ${{ steps.result.outputs.result_8 }}
+      result_9: ${{ steps.result.outputs.result_9 }}
+      result_10: ${{ steps.result.outputs.result_10 }}
+      result_11: ${{ steps.result.outputs.result_11 }}
+      result_12: ${{ steps.result.outputs.result_12 }}
+      result_13: ${{ steps.result.outputs.result_13 }}
+      result_14: ${{ steps.result.outputs.result_14 }}
+      result_15: ${{ steps.result.outputs.result_15 }}
+      result_16: ${{ steps.result.outputs.result_16 }}
+      result_17: ${{ steps.result.outputs.result_17 }}
+      result_18: ${{ steps.result.outputs.result_18 }}
+      result_19: ${{ steps.result.outputs.result_19 }}
+    steps:
+      -
+        name: Environment variables
+        uses: actions/github-script@v8
+        env:
+          INPUT_ENVS: ${{ inputs.envs }}
+        with:
+          script: |
+            for (const env of core.getMultilineInput('envs')) {
+              core.info(env);
+              const [key, value] = env.split('=', 2);
+              core.exportVariable(key, value);
+            }
+      -
+        name: Install @docker/actions-toolkit
+        uses: actions/github-script@v8
+        env:
+          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+        with:
+          script: |
+            await exec.exec('npm', ['install', '--prefer-offline', '--no-audit', core.getInput('dat-module')]);
       -
         name: Docker meta
         id: meta
@@ -161,11 +277,25 @@ jobs:
           labels: ${{ inputs.meta-labels }}
           annotations: ${{ inputs.meta-annotations }}
       -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: ${{ inputs.setup-qemu }}
+        with:
+          image: ${{ inputs.qemu-image }}
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          buildkitd-flags: --debug
+      -
         name: Prepare
         id: prepare
         uses: actions/github-script@v8
         env:
+          INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
@@ -180,7 +310,13 @@ jobs:
           INPUT_BUILD-TARGET: ${{ inputs.build-target }}
         with:
           script: |
+            const inpPlatform = core.getInput('platform');
+            const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
+            core.setOutput('platform-pair-suffix', platformPairSuffix);
+            
             const inpLocalExportDir = core.getInput('local-export-dir');
+            
+            const inpContext = core.getInput('context');
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
@@ -194,6 +330,9 @@ jobs:
             const inpMetaLabels = core.getMultilineInput('meta-labels');
             const inpBuildTarget = core.getInput('build-target');
             
+            const buildContext = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
+            core.setOutput('context', buildContext);
+            
             switch (inpBuildOutput) {
               case 'cacheonly':
                 core.setOutput('output', 'type=cacheonly');
@@ -205,15 +344,19 @@ jobs:
                 core.setOutput('output', `type=registry,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true`);
                 break;
               case 'local':
-                core.setOutput('output', `type=local,dest=${inpLocalExportDir}`);
+                core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
                 break;
               default:
                 core.setFailed(`Invalid build-output: ${inpBuildOutput}`);
             }
             
+            if (inpPlatform) {
+              core.setOutput('platform', inpPlatform);
+            }
+            
             if (inpCache) {
-              core.setOutput('cache-from', `type=gha,scope=${inpCacheScope || inpBuildTarget || 'buildkit'}`);
-              core.setOutput('cache-to', `type=gha,scope=${inpCacheScope || inpBuildTarget || 'buildkit'},mode=${inpCacheMode}`);
+              core.setOutput('cache-from', `type=gha,scope=${inpCacheScope || inpBuildTarget || 'buildkit'}${platformPairSuffix}`);
+              core.setOutput('cache-to', `type=gha,scope=${inpCacheScope || inpBuildTarget || 'buildkit'}${platformPairSuffix},mode=${inpCacheMode}`);
             }
             
             if (inpSetMetaAnnotations && inpMetaAnnotations.length > 0) {
@@ -225,18 +368,6 @@ jobs:
               inpBuildLabels.push(...inpMetaLabels);
             }
             core.setOutput('labels', inpBuildLabels.join('\n'));
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        if: ${{ inputs.setup-qemu }}
-        with:
-          image: ${{ inputs.qemu-image }}
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          version: latest
-          buildkitd-flags: --debug
       -
         name: Login to registry
         if: ${{ inputs.output == 'registry' }}
@@ -253,10 +384,11 @@ jobs:
           build-args: ${{ inputs.build-args }}
           cache-from: ${{ steps.prepare.outputs.cache-from }}
           cache-to: ${{ steps.prepare.outputs.cache-to }}
+          context: ${{ steps.prepare.outputs.context }}
           file: ${{ inputs.build-file }}
           labels: ${{ steps.prepare.outputs.labels }}
           outputs: ${{ steps.prepare.outputs.output }}
-          platforms: ${{ inputs.build-platforms }}
+          platforms: ${{ steps.prepare.outputs.platform }}
           provenance: mode=max,version=v1
           pull: ${{ inputs.build-pull }}
           sbom: ${{ inputs.build-sbom }}
@@ -266,15 +398,6 @@ jobs:
           github-token: ${{ secrets.github-token || github.token }}
         env:
           BUILDKIT_MULTI_PLATFORM: 1
-      -
-        name: Install @docker/actions-toolkit
-        if: ${{ inputs.output != 'cacheonly' }}
-        uses: actions/github-script@v8
-        env:
-          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
-        with:
-          script: |
-            await exec.exec('npm', ['install', '--prefer-offline', '--no-audit', core.getInput('dat-module')]);
       -
         name: Install Cosign
         if: ${{ inputs.output != 'cacheonly' }}
@@ -360,30 +483,6 @@ jobs:
               core.setOutput('verify-commands', verifyCommands.join('\n'));
             });
       -
-        name: Create manifest
-        if: ${{ inputs.output == 'registry' }}
-        uses: actions/github-script@v8
-        env:
-          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
-          INPUT_TAG-NAMES: ${{ steps.meta.outputs.tag-names }}
-          INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
-        with:
-          script: |
-            for (const imageName of core.getMultilineInput('image-names')) {
-              let createArgs = ['buildx', 'imagetools', 'create'];
-              for (const tag of core.getMultilineInput('tag-names')) {
-                createArgs.push('-t', `${imageName}:${tag}`);
-              }
-              createArgs.push(core.getInput('image-digest'));
-              await exec.getExecOutput('docker', createArgs, {
-                ignoreReturnCode: true
-              }).then(res => {
-                if (res.stderr.length > 0 && res.exitCode != 0) {
-                  throw new Error(res.stderr);
-                }
-              });
-            }
-      -
         name: List local output
         if: ${{ inputs.output == 'local' }}
         run: |
@@ -393,6 +492,129 @@ jobs:
         if: ${{ inputs.output == 'local' }}
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ inputs.artifact-name }}
+          name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
           if-no-files-found: error
+      -
+        name: Set result output
+        id: result
+        uses: actions/github-script@v8
+        env:
+          INPUT_INDEX: ${{ matrix.index }}
+          INPUT_VERIFY-COMMANDS: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
+          INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
+          INPUT_ARTIFACT-NAME: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix }}
+        with:
+          script: |
+            const inpIndex = core.getInput('index');
+            const inpVerifyCommands = core.getInput('verify-commands');
+            const inpImageDigest = core.getInput('image-digest');
+            const inpArtifactName = core.getInput('artifact-name');
+            
+            const result = {
+              verifyCommands: inpVerifyCommands,
+              imageDigest: inpImageDigest,
+              artifactName: inpArtifactName
+            }
+            core.info(JSON.stringify(result, null, 2));
+            
+            core.setOutput(`result_${inpIndex}`, JSON.stringify(result));
+
+  finalize:
+    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      id-token: write # for registry authentication with OIDC if needed
+      packages: write # for pushing to GHCR when merging manifests if needed
+    outputs:
+      cosign-version: ${{ env.COSIGN_VERSION }}
+      cosign-verify-commands: ${{ steps.set.outputs.cosign-verify-commands }}
+      artifact-name: ${{ inputs.artifact-name }}
+      output-type: ${{ inputs.output }}
+    needs:
+      - build
+    steps:
+      -
+        name: Docker meta
+        id: meta
+        if: ${{ inputs.output == 'registry' }}
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.meta-images }}
+          tags: ${{ inputs.meta-tags }}
+          flavor: ${{ inputs.meta-flavor }}
+          labels: ${{ inputs.meta-labels }}
+          annotations: ${{ inputs.meta-annotations }}
+      -
+        name: Login to registry
+        if: ${{ inputs.output == 'registry' }}
+        # TODO: switch to docker/login-action when OIDC is supported
+        uses: crazy-max/docker-login-action@dockerhub-oidc
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
+        name: Set up Docker Buildx
+        if: ${{ inputs.output == 'registry' }}
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          buildkitd-flags: --debug
+      -
+        name: Create manifest
+        if: ${{ inputs.output == 'registry' }}
+        uses: actions/github-script@v8
+        env:
+          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
+          INPUT_TAG-NAMES: ${{ steps.meta.outputs.tag-names }}
+          INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
+        with:
+          script: |
+            const inpImageNames = core.getMultilineInput('image-names');
+            const inpTagNames = core.getMultilineInput('tag-names');
+            const inpBuildOutputs = JSON.parse(core.getInput('build-outputs'));
+            
+            const digests = [];
+            for (const key of Object.keys(inpBuildOutputs)) {
+              const output = JSON.parse(inpBuildOutputs[key]);
+              if (output.imageDigest) {
+                digests.push(output.imageDigest);
+              }
+            }
+            if (digests.length === 0) {
+              throw new Error('No image digests found from build outputs');
+            }
+            
+            for (const imageName of inpImageNames) {
+              let createArgs = ['buildx', 'imagetools', 'create'];
+              for (const tag of inpTagNames) {
+                createArgs.push('-t', `${imageName}:${tag}`);
+              }
+              for (const digest of digests) {
+                createArgs.push(digest);
+              }
+              await exec.getExecOutput('docker', createArgs, {
+                ignoreReturnCode: true
+              }).then(res => {
+                if (res.stderr.length > 0 && res.exitCode != 0) {
+                  throw new Error(res.stderr);
+                }
+              });
+            }
+      -
+        name: Set outputs
+        id: set
+        if: ${{ inputs.output != 'cacheonly' }}
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
+        with:
+          script: |
+            const inpBuildOutputs = JSON.parse(core.getInput('build-outputs'));
+            const verifyCommands = [];
+            for (const key of Object.keys(inpBuildOutputs)) {
+              const output = JSON.parse(inpBuildOutputs[key]);
+              if (output.verifyCommands) {
+                verifyCommands.push(output.verifyCommands);
+              }
+            }
+            core.setOutput('cosign-verify-commands', verifyCommands.join('\n'));

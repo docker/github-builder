@@ -36,8 +36,8 @@ on:
     uses: docker/github-builder-experimental/.github/workflows/build.yml@main
     permissions:
       contents: read
-      id-token: write # for signing attestation manifests with GitHub OIDC Token
-      packages: write # only used if pushing to GHCR but needs to be defined as caller must provide permissions ≥ to those used in the reusable workflow
+      id-token: write # for signing attestation manifests and registry authentication if needed with GitHub OIDC Token
+      packages: write # for pushing manifests to GHCR if needed (caller must provide the same permissions used in the reusable workflow)
     with:
       output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
       meta-images: name/app
@@ -91,8 +91,8 @@ on:
     uses: docker/github-builder-experimental/.github/workflows/bake.yml@main
     permissions:
       contents: read
-      id-token: write # for signing attestation manifests with GitHub OIDC Token
-      packages: write # only used if pushing to GHCR but needs to be defined as caller must provide permissions ≥ to those used in the reusable workflow
+      id-token: write # for signing attestation manifests and registry authentication if needed with GitHub OIDC Token
+      packages: write # for pushing manifests to GHCR if needed (caller must provide the same permissions used in the reusable workflow)
     with:
       output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
       meta-images: name/app
