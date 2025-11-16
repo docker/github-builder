@@ -63,7 +63,7 @@ on:
         type: boolean
         description: "Install QEMU static binaries"
         required: false
-        default: true
+        default: false
       # same as docker/metadata-action inputs (minus sep-tags, sep-labels, sep-annotations, bake-target)
       meta-images:
         type: string
