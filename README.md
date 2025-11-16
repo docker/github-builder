@@ -39,7 +39,8 @@ on:
       id-token: write # for signing attestation manifests and registry authentication if needed with GitHub OIDC Token
       packages: write # for pushing manifests to GHCR if needed (caller must provide the same permissions used in the reusable workflow)
     with:
-      output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
       meta-images: name/app
       meta-tags: |
         type=ref,event=branch
@@ -94,7 +95,8 @@ on:
       id-token: write # for signing attestation manifests and registry authentication if needed with GitHub OIDC Token
       packages: write # for pushing manifests to GHCR if needed (caller must provide the same permissions used in the reusable workflow)
     with:
-      output: ${{ github.event_name != 'pull_request' && 'registry' || 'cacheonly' }}
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
       meta-images: name/app
       meta-tags: |
         type=ref,event=branch
