@@ -14,9 +14,8 @@ on:
         default: .
       output:
         type: string
-        description: "Build output destination (one of cacheonly, registry, local)"
-        default: 'cacheonly'
-        required: false
+        description: "Build output destination (image or local)"
+        required: true
       artifact-name:
         type: string
         description: "Name of the uploaded artifact (for local output)"
@@ -26,6 +25,11 @@ on:
         type: string
         description: "Environment variables to set"
         required: false
+      push:
+        type: boolean
+        description: "Push image to the registry (for image output) and/or sign attestation manifests or local artifacts"
+        required: false
+        default: false
       cache:
         type: boolean
         description: "Enable cache to GitHub Actions cache backend"
@@ -268,7 +272,7 @@ jobs:
       -
         name: Docker meta
         id: meta
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@v5
         with:
           images: ${{ inputs.meta-images }}
@@ -296,11 +300,12 @@ jobs:
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
           INPUT_CONTEXT: ${{ inputs.context }}
+          INPUT_OUTPUT: ${{ inputs.output }}
+          INPUT_PUSH: ${{ inputs.push }}
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
-          INPUT_BUILD-OUTPUT: ${{ inputs.output }}
           INPUT_BUILD-ANNOTATIONS: ${{ inputs.build-annotations }}
           INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
           INPUT_META-ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
@@ -317,11 +322,12 @@ jobs:
             const inpLocalExportDir = core.getInput('local-export-dir');
             
             const inpContext = core.getInput('context');
+            const inpOutput = core.getInput('output');
+            const inpPush = core.getBooleanInput('push');
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
             const inpMetaImages = core.getMultilineInput('meta-images');
-            const inpBuildOutput = core.getInput('build-output');
             const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
             const inpBuildAnnotations = core.getMultilineInput('build-annotations');
             const inpMetaAnnotations = core.getMultilineInput('meta-annotations');
@@ -333,21 +339,18 @@ jobs:
             const buildContext = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
             core.setOutput('context', buildContext);
             
-            switch (inpBuildOutput) {
-              case 'cacheonly':
-                core.setOutput('output', 'type=cacheonly');
-                break;
-              case 'registry':
+            switch (inpOutput) {
+              case 'image':
                 if (inpMetaImages.length == 0) {
-                  core.setFailed('meta-images is required when build-output is registry');
+                  core.setFailed('meta-images is required when output is image');
                 }
-                core.setOutput('output', `type=registry,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true`);
+                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
                 break;
               case 'local':
                 core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
                 break;
               default:
-                core.setFailed(`Invalid build-output: ${inpBuildOutput}`);
+                core.setFailed(`Invalid output: ${inpOutput}`);
             }
             
             if (inpPlatform) {
@@ -370,7 +373,7 @@ jobs:
             core.setOutput('labels', inpBuildLabels.join('\n'));
       -
         name: Login to registry
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.push && inputs.output == 'image' }}
         # TODO: switch to docker/login-action when OIDC is supported
         uses: crazy-max/docker-login-action@dockerhub-oidc
         with:
@@ -400,7 +403,7 @@ jobs:
           BUILDKIT_MULTI_PLATFORM: 1
       -
         name: Install Cosign
-        if: ${{ inputs.output != 'cacheonly' }}
+        if: ${{ inputs.push }}
         uses: actions/github-script@v8
         env:
           INPUT_COSIGN-VERSION: ${{ env.COSIGN_VERSION }}
@@ -418,7 +421,7 @@ jobs:
       -
         name: Signing attestation manifests
         id: signing-attestation-manifests
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.push && inputs.output == 'image' }}
         uses: actions/github-script@v8
         env:
           INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
@@ -453,7 +456,7 @@ jobs:
       -
         name: Signing local artifacts
         id: signing-local-artifacts
-        if: ${{ inputs.output == 'local' }}
+        if: ${{ inputs.push && inputs.output == 'local' }}
         uses: actions/github-script@v8
         env:
           INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
@@ -537,7 +540,7 @@ jobs:
       -
         name: Docker meta
         id: meta
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@v5
         with:
           images: ${{ inputs.meta-images }}
@@ -547,21 +550,21 @@ jobs:
           annotations: ${{ inputs.meta-annotations }}
       -
         name: Login to registry
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.push && inputs.output == 'image' }}
         # TODO: switch to docker/login-action when OIDC is supported
         uses: crazy-max/docker-login-action@dockerhub-oidc
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
         name: Set up Docker Buildx
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.push && inputs.output == 'image' }}
         uses: docker/setup-buildx-action@v3
         with:
           version: latest
           buildkitd-flags: --debug
       -
         name: Create manifest
-        if: ${{ inputs.output == 'registry' }}
+        if: ${{ inputs.push && inputs.output == 'image' }}
         uses: actions/github-script@v8
         env:
           INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
@@ -603,7 +606,6 @@ jobs:
       -
         name: Set outputs
         id: set
-        if: ${{ inputs.output != 'cacheonly' }}
         uses: actions/github-script@v8
         env:
           INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
