@@ -3,10 +3,6 @@ name: build
 on:
   workflow_call:
     inputs:
-      runs-on:
-        type: string
-        description: "Type of machine to run the jobs on similar to jobs.<job_id>.runs-on (defaults to best matching runner depending on target platform)"
-        required: false
       context:
         type: string
         description: "Context to build from (defaults to repository root)"
@@ -156,7 +152,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -176,7 +172,6 @@ jobs:
         uses: actions/github-script@v8
         env:
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
-          INPUT_RUNS-ON: ${{ inputs.runs-on }}
           INPUT_BUILD-PLATFORMS: ${{ inputs.build-platforms }}
         with:
           script: |
@@ -184,7 +179,6 @@ jobs:
             
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
             
-            const inpRunsOn = core.getInput('runs-on');
             const inpBuildPlatforms = Util.getInputList('build-platforms');
             
             await core.group(`Set includes`, async () => {
@@ -194,18 +188,14 @@ jobs:
               } else if (inpBuildPlatforms.length === 0) {
                 includes.push({
                   index: 0,
-                  'runs-on': inpRunsOn || 'ubuntu-latest'
+                  runner: 'ubuntu-24.04'
                 });
               } else {
                 inpBuildPlatforms.forEach((platform, index) => {
-                  let runsOn = inpRunsOn;
-                  if (!runsOn) {
-                    runsOn = platform.startsWith('linux/arm') ? 'ubuntu-24.04-arm' : 'ubuntu-latest';
-                  }
                   includes.push({
                     index: index,
                     platform: platform,
-                    'runs-on': runsOn
+                    runner: platform.startsWith('linux/arm') ? 'ubuntu-24.04-arm' : 'ubuntu-24.04'
                   });
                 });
               }
@@ -214,7 +204,7 @@ jobs:
             });
 
   build:
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runner }}
     needs:
       - prepare
     permissions:
@@ -524,7 +514,7 @@ jobs:
             core.setOutput(`result_${inpIndex}`, JSON.stringify(result));
 
   finalize:
-    runs-on: ${{ inputs.runs-on || 'ubuntu-latest' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write # for registry authentication with OIDC if needed
