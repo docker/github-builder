@@ -423,6 +423,8 @@ jobs:
           INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
         with:
           script: |
+            // FIXME: remove once https://github.com/docker/github-builder-experimental/issues/30 is resolved
+            await new Promise(resolve => setTimeout(resolve, 3000));
             const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
             
             const inpImageNames = core.getMultilineInput('image-names');
