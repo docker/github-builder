@@ -309,6 +309,8 @@ jobs:
           INPUT_BUILD-TARGET: ${{ inputs.build-target }}
         with:
           script: |
+            const { GitHub } = require('@docker/actions-toolkit/lib/github');
+            
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -365,6 +367,15 @@ jobs:
               inpBuildLabels.push(...inpMetaLabels);
             }
             core.setOutput('labels', inpBuildLabels.join('\n'));
+            
+            if (GitHub.context.payload.repository?.private ?? false) {
+              // if this is a private repository, we set the default provenance
+              // attributes being set in buildx: https://github.com/docker/buildx/blob/fb27e3f919dcbf614d7126b10c2bc2d0b1927eb6/build/build.go#L603
+              core.setOutput('provenance', 'mode=min,inline-only=true,version=v1');
+            } else {
+              // for a public repository, we set max provenance mode
+              core.setOutput('provenance', 'mode=max,version=v1');
+            }
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
@@ -386,7 +397,7 @@ jobs:
           labels: ${{ steps.prepare.outputs.labels }}
           outputs: ${{ steps.prepare.outputs.output }}
           platforms: ${{ steps.prepare.outputs.platform }}
-          provenance: mode=max,version=v1
+          provenance: ${{ steps.prepare.outputs.provenance }}
           pull: ${{ inputs.build-pull }}
           sbom: ${{ inputs.build-sbom }}
           secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
