@@ -591,14 +591,16 @@ jobs:
           driver-opts: image=${{ env.BUILDKIT_IMAGE }}
       -
         name: Create manifest
-        if: ${{ inputs.push && inputs.output == 'image' }}
+        if: ${{ inputs.output == 'image' }}
         uses: actions/github-script@v8
         env:
+          INPUT_PUSH: ${{ inputs.push }}
           INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
           INPUT_TAG-NAMES: ${{ steps.meta.outputs.tag-names }}
           INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
         with:
           script: |
+            const inpPush = core.getBooleanInput('push');
             const inpImageNames = core.getMultilineInput('image-names');
             const inpTagNames = core.getMultilineInput('tag-names');
             const inpBuildOutputs = JSON.parse(core.getInput('build-outputs'));
@@ -622,13 +624,19 @@ jobs:
               for (const digest of digests) {
                 createArgs.push(digest);
               }
-              await exec.getExecOutput('docker', createArgs, {
-                ignoreReturnCode: true
-              }).then(res => {
-                if (res.stderr.length > 0 && res.exitCode != 0) {
-                  throw new Error(res.stderr);
-                }
-              });
+              if (inpPush) {
+                await exec.getExecOutput('docker', createArgs, {
+                  ignoreReturnCode: true
+                }).then(res => {
+                  if (res.stderr.length > 0 && res.exitCode != 0) {
+                    throw new Error(res.stderr);
+                  }
+                });
+              } else {
+                await core.group(`Generated imagetools create command for ${imageName}`, async () => {
+                  core.info(`docker ${createArgs.join(' ')}`);
+                });
+              }
             }
       -
         name: Set outputs
