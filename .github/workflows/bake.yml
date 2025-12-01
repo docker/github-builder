@@ -551,13 +551,22 @@ jobs:
           INPUT_IMAGE-DIGEST: ${{ steps.get-image-digest.outputs.digest }}
         with:
           script: |
-            // FIXME: remove once https://github.com/docker/github-builder-experimental/issues/30 is resolved
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
             const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
             
             const inpImageNames = core.getMultilineInput('image-names');
             const inpImageDigest = core.getInput('image-digest');
+            
+            // ECR registry regexes: https://github.com/docker/login-action/blob/28fdb31ff34708d19615a74d67103ddc2ea9725c/src/aws.ts#L8-L9
+            const ecrRegistryRegex = /^(([0-9]{12})\.(dkr\.ecr|dkr-ecr)\.(.+)\.(on\.aws|amazonaws\.com(.cn)?))(\/([^:]+)(:.+)?)?$/;
+            const ecrPublicRegistryRegex = /public\.ecr\.aws|ecr-public\.aws\.com/;
+            for (const imageName of inpImageNames) {
+              if (ecrRegistryRegex.test(imageName) || ecrPublicRegistryRegex.test(imageName)) {
+                core.info(`Detected ECR image name: ${imageName}, adding delay to mitigate eventual consistency issue`);
+                // FIXME: remove once https://github.com/docker/github-builder-experimental/issues/30 is resolved
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                break;
+              }
+            }
             
             const sigstore = new Sigstore();
             const signResults = await sigstore.signAttestationManifests({
