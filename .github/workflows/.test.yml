@@ -49,6 +49,21 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  build-aws-single-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-aws-single
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-aws-single.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-aws:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -85,6 +100,21 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  build-aws-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-aws
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-aws.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-ghcr:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -119,6 +149,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+  build-ghcr-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-ghcr
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-ghcr.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-dockerhub-stage:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -151,6 +196,21 @@ jobs:
         - registry: registry-1-stage.docker.io
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  build-dockerhub-stage-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-dockerhub-stage
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-dockerhub-stage.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
 
   build-dockerhub-stage-oidc:
     uses: ./.github/workflows/build.yml
@@ -185,6 +245,21 @@ jobs:
       registry-auths: |
         - registry: registry-1-stage.docker.io
           username: docker:cdeb5882-30b7-4076-be92-bfdceb258e9c
+
+  build-dockerhub-stage-oidc-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-dockerhub-stage-oidc
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-dockerhub-stage-oidc.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
 
   build-ghcr-and-aws:
     uses: ./.github/workflows/build.yml
@@ -228,6 +303,21 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  build-ghcr-and-aws-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-ghcr-and-aws
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-ghcr-and-aws.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-local:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -249,6 +339,21 @@ jobs:
     with:
       builder-outputs: ${{ toJSON(needs.build-local.outputs) }}
 
+  build-local-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-local
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.local.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-local-single:
     uses: ./.github/workflows/build.yml
     permissions:
@@ -268,6 +373,21 @@ jobs:
       - build-local-single
     with:
       builder-outputs: ${{ toJSON(needs.build-local-single.outputs) }}
+
+  build-local-single-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-local-single
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-local-single.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
 
   build-set-runner:
     uses: ./.github/workflows/build.yml
@@ -320,6 +440,21 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  bake-aws-single-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-aws-single
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-aws-single.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   bake-aws:
     uses: ./.github/workflows/bake.yml
     permissions:
@@ -355,6 +490,21 @@ jobs:
         - registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  bake-aws-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-aws
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-aws.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
 
   bake-ghcr-and-aws:
     uses: ./.github/workflows/bake.yml
@@ -400,6 +550,21 @@ jobs:
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+  bake-ghcr-and-aws-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-ghcr-and-aws
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-ghcr-and-aws.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   bake-local:
     uses: ./.github/workflows/bake.yml
     permissions:
@@ -422,6 +587,21 @@ jobs:
     with:
       builder-outputs: ${{ toJSON(needs.bake-local.outputs) }}
 
+  bake-local-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-local
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-local.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   bake-local-single:
     uses: ./.github/workflows/bake.yml
     permissions:
@@ -443,6 +623,21 @@ jobs:
       - bake-local-single
     with:
       builder-outputs: ${{ toJSON(needs.bake-local-single.outputs) }}
+
+  bake-local-single-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-local-single
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@v8
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-local-single.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
 
   bake-set-runner:
     uses: ./.github/workflows/bake.yml

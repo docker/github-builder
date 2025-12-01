@@ -125,17 +125,20 @@ on:
         description: "GitHub Token used to authenticate against a repository for Git context"
         required: false
     outputs:
+      meta-json:
+        description: "Metadata JSON output (only for image output)"
+        value: ${{ jobs.finalize.outputs.meta-json }}
       cosign-version:
-        description: Cosign version used for verification
+        description: "Cosign version used for verification"
         value: ${{ jobs.finalize.outputs.cosign-version }}
       cosign-verify-commands:
-        description: Cosign verify commands
+        description: "Cosign verify commands"
         value: ${{ jobs.finalize.outputs.cosign-verify-commands }}
       artifact-name:
-        description: Name of the uploaded artifact (for local output)
+        description: "Name of the uploaded artifact (for local output)"
         value: ${{ jobs.finalize.outputs.artifact-name }}
       output-type:
-        description: Build output type
+        description: "Build output type"
         value: ${{ jobs.finalize.outputs.output-type }}
 
 env:
@@ -661,6 +664,7 @@ jobs:
   finalize:
     runs-on: ubuntu-24.04
     outputs:
+      meta-json: ${{ steps.meta.outputs.json }}
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.set.outputs.cosign-verify-commands }}
       artifact-name: ${{ inputs.artifact-name }}
