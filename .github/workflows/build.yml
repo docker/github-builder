@@ -552,7 +552,7 @@ jobs:
             const inpArtifactName = core.getInput('artifact-name');
             
             const result = {
-              verifyCommands: inpVerifyCommands,
+              verifyCommands: inpVerifyCommands || '[]',
               imageDigest: inpImageDigest,
               artifactName: inpArtifactName
             }
