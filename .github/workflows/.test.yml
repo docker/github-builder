@@ -313,7 +313,7 @@ jobs:
     with:
       output: local
       push: ${{ github.event_name != 'pull_request' }}
-      artifact-name: build-output-single
+      artifact-name: build-single-output
       build-file: test/hello.Dockerfile
       build-sbom: true
 
@@ -564,7 +564,7 @@ jobs:
       output: local
       push: ${{ github.event_name != 'pull_request' }}
       cache: true
-      artifact-name: bake-output-single
+      artifact-name: bake-single-output
       bake-sbom: true
 
   bake-local-single-verify:

@@ -526,7 +526,7 @@ jobs:
         if: ${{ inputs.output == 'local' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix }}
+          name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix || '0' }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
           if-no-files-found: error
       -
@@ -639,6 +639,14 @@ jobs:
                 });
               }
             }
+      -
+        name: Merge artifacts
+        if: ${{ inputs.output == 'local' }}
+        uses: actions/upload-artifact/merge@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          pattern: ${{ inputs.artifact-name }}*
+          delete-merged: true
       -
         name: Set outputs
         id: set
