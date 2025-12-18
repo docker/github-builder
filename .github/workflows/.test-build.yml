@@ -14,11 +14,13 @@ on:
       - 'v*'
     paths:
       - '.github/workflows/.test-build.yml'
+      - '.github/workflows/build.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
   pull_request:
     paths:
       - '.github/workflows/.test-build.yml'
+      - '.github/workflows/build.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
 

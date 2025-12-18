@@ -58,9 +58,10 @@ on:
         required: false
         default: false
       sbom:
-        type: string
+        type: boolean
         description: "Generate SBOM attestation for the build"
         required: false
+        default: false
       shm-size:
         type: string
         description: "Size of /dev/shm (e.g., 2g)"

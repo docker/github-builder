@@ -14,11 +14,13 @@ on:
       - 'v*'
     paths:
       - '.github/workflows/.test-bake.yml'
+      - '.github/workflows/bake.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
   pull_request:
     paths:
       - '.github/workflows/.test-bake.yml'
+      - '.github/workflows/bake.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
 

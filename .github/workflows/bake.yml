@@ -42,9 +42,10 @@ on:
         required: false
         default: false
       sbom:
-        type: string
+        type: boolean
         description: "Generate SBOM attestation for the build"
         required: false
+        default: false
       set:
         type: string
         description: "List of targets values to override (eg. targetpattern.key=value)"
@@ -176,7 +177,7 @@ jobs:
             const inpFiles = Util.getInputList('files');
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
-            const inpSbom = core.getInput('sbom');
+            const inpSbom = core.getBooleanInput('sbom');
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpSign = core.getInput('sign');
             const inpTarget = core.getInput('target');
@@ -220,7 +221,7 @@ jobs:
                 def = await bake.getDefinition({
                   files: inpFiles,
                   overrides: inpSet,
-                  sbom: inpSbom,
+                  sbom: inpSbom ? 'true' : 'false',
                   source: bakeSource,
                   targets: [inpTarget],
                   githubToken: inpGitHubToken
@@ -376,7 +377,7 @@ jobs:
             const inpFiles = Util.getInputList('files');
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
-            const inpSbom = core.getInput('sbom');
+            const inpSbom = core.getBooleanInput('sbom');
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpTarget = core.getInput('target');
             const inpMetaImages = core.getMultilineInput('meta-images');
@@ -400,7 +401,7 @@ jobs:
                 const def = await bake.getDefinition({
                   files: inpFiles,
                   overrides: inpSet,
-                  sbom: inpSbom,
+                  sbom: inpSbom ? 'true' : 'false',
                   source: bakeSource,
                   targets: [inpTarget],
                   githubToken: inpGitHubToken
