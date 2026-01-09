@@ -146,6 +146,7 @@ on:
 env:
   BUILDX_VERSION: "v0.30.1"
   BUILDKIT_IMAGE: "moby/buildkit:master@sha256:bdefeba47634c596286beabe68219708ed364c4f1a5e4e9a2e160274712a0e89" # TODO: pin to a specific version when signed gha cache feature is available
+  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.9.0"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.72.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
@@ -423,6 +424,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           INPUT_PLATFORM: ${{ matrix.platform }}
+          INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
           INPUT_ANNOTATIONS: ${{ inputs.annotations }}
           INPUT_CACHE: ${{ inputs.cache }}
@@ -432,6 +434,7 @@ jobs:
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
           INPUT_PUSH: ${{ inputs.push }}
+          INPUT_SBOM: ${{ inputs.sbom }}
           INPUT_TARGET: ${{ inputs.target }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
           INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
@@ -445,6 +448,8 @@ jobs:
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
+            
+            const inpSbomImage = core.getInput('sbom-image');
             const inpLocalExportDir = core.getInput('local-export-dir');
             
             const inpAnnotations = core.getMultilineInput('annotations');
@@ -455,6 +460,7 @@ jobs:
             const inpLabels = core.getMultilineInput('labels');
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
+            const inpSbom = core.getBooleanInput('sbom');
             const inpTarget = core.getInput('target');
             
             const inpMetaImages = core.getMultilineInput('meta-images');
@@ -485,6 +491,8 @@ jobs:
             if (inpPlatform) {
               core.setOutput('platform', inpPlatform);
             }
+            
+            core.setOutput('sbom', inpSbom ? `generator=${inpSbomImage}` : 'false');
             
             if (inpCache) {
               core.setOutput('cache-from', `type=gha,scope=${inpCacheScope || inpTarget || 'buildkit'}${platformPairSuffix}`);
@@ -530,7 +538,7 @@ jobs:
           outputs: ${{ steps.prepare.outputs.output }}
           platforms: ${{ steps.prepare.outputs.platform }}
           provenance: ${{ steps.prepare.outputs.provenance }}
-          sbom: ${{ inputs.sbom }}
+          sbom: ${{ steps.prepare.outputs.sbom }}
           secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
           shm-size: ${{ inputs.shm-size }}
           target: ${{ inputs.target }}

@@ -139,6 +139,7 @@ on:
 env:
   BUILDX_VERSION: "v0.30.1"
   BUILDKIT_IMAGE: "moby/buildkit:master@sha256:bdefeba47634c596286beabe68219708ed364c4f1a5e4e9a2e160274712a0e89" # TODO: pin to a specific version when signed gha cache feature is available
+  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.9.0"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.72.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
@@ -165,6 +166,7 @@ jobs:
         id: set
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
+          INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
           INPUT_RUNNER: ${{ inputs.runner }}
           INPUT_ARTIFACT-UPLOAD: ${{ inputs.artifact-upload }}
@@ -184,6 +186,7 @@ jobs:
             const { GitHub } = require('@docker/actions-toolkit/lib/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
 
+            const inpSbomImage = core.getInput('sbom-image');
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
             
             const inpRunner = core.getInput('runner');
@@ -236,7 +239,7 @@ jobs:
                 def = await bake.getDefinition({
                   files: inpFiles,
                   overrides: inpSet,
-                  sbom: inpSbom ? 'true' : 'false',
+                  sbom: inpSbom ? `generator=${inpSbomImage}` : 'false',
                   source: bakeSource,
                   targets: [inpTarget],
                   githubToken: inpGitHubToken
@@ -462,6 +465,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           INPUT_PLATFORM: ${{ matrix.platform }}
+          INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
@@ -491,6 +495,7 @@ jobs:
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
             
+            const inpSbomImage = core.getInput('sbom-image');
             const inpLocalExportDir = core.getInput('local-export-dir');
             
             const inpCache = core.getBooleanInput('cache');
@@ -517,6 +522,12 @@ jobs:
               core.setOutput('source', bakeSource);
             });
             
+            const sbom = inpSbom ? `generator=${inpSbomImage}` : 'false';
+            await core.group(`Set sbom`, async () => {
+              core.info(sbom);
+              core.setOutput('sbom', sbom);
+            });
+            
             let target;
             try {
               await core.group(`Validating definition`, async () => {
@@ -524,7 +535,7 @@ jobs:
                 const def = await bake.getDefinition({
                   files: inpFiles,
                   overrides: inpSet,
-                  sbom: inpSbom ? 'true' : 'false',
+                  sbom: sbom,
                   source: bakeSource,
                   targets: [inpTarget],
                   githubToken: inpGitHubToken
@@ -614,7 +625,7 @@ jobs:
           source: ${{ steps.prepare.outputs.source }}
           files: ${{ steps.prepare.outputs.files }}
           targets: ${{ steps.prepare.outputs.target }}
-          sbom: ${{ inputs.sbom }}
+          sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
         env:
           BUILDKIT_MULTI_PLATFORM: 1
