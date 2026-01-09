@@ -335,7 +335,7 @@ jobs:
                   required = true
                   [cache.gha.verify.policy]
                     timestampThreshold = 1
-                    tlogThreshold = ${{ matrix.privateRepo == 'true' && '0' || '1' }}
+                    tlogThreshold = ${{ needs.prepare.outputs.privateRepo == 'true' && '0' || '1' }}
                     subjectAlternativeName = "https://github.com/docker/github-builder-experimental/.github/workflows/build.yml*"
                     githubWorkflowRepository = "docker/github-builder-experimental"
                     issuer = "https://token.actions.githubusercontent.com"
@@ -368,7 +368,7 @@ jobs:
               --new-bundle-format \
               --use-signing-config \
               --bundle "$out_file" \
-              --tlog-upload=${{ matrix.privateRepo == 'false' }} \
+              --tlog-upload=${{ needs.prepare.outputs.privateRepo == 'false' }} \
               "$in_file"
             
             # Output bundle to stdout
