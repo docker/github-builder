@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 
 ARG GO_VERSION="1.25"
+ARG XX_VERSION="1.7.0"
 
 # xx is a helper for cross-compilation
-FROM --platform=$BUILDPLATFORM tonistiigi/xx:1.7.0 AS xx
+FROM --platform=$BUILDPLATFORM tonistiigi/xx:${XX_VERSION} AS xx
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS base
 COPY --from=xx / /
