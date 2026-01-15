@@ -354,7 +354,6 @@ jobs:
                     issuer = "https://token.actions.githubusercontent.com"
                     runnerEnvironment = "github-hosted"
                     sourceRepositoryURI = "${{ github.server_url }}/${{ github.repository }}"
-                    sourceRepositoryRef = "${{ github.event_name != 'pull_request' && github.ref || '' }}"
       -
         name: Install Cosign
         if: ${{ needs.prepare.outputs.sign == 'true' || inputs.cache }}
