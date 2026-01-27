@@ -11,8 +11,15 @@ group "grp" {
   targets = ["go", "hello"]
 }
 
+variable "XX_VERSION" {
+  default = null
+}
+
 target "go" {
   inherits = ["docker-metadata-action"]
+  args = {
+    XX_VERSION = XX_VERSION
+  }
   dockerfile = "go.Dockerfile"
 }
 
