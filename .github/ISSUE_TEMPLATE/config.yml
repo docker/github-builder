@@ -2,7 +2,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Questions and Discussions
-    url: https://github.com/docker/github-builder-experimental/discussions/new
+    url: https://github.com/docker/github-builder/discussions/new
     about: Use Github Discussions to ask questions and/or open discussion topics.
   - name: Documentation
     url: https://docs.docker.com/build/ci/github-actions/

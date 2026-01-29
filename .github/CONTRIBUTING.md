@@ -7,10 +7,10 @@ to the public under the [project's open source license](../LICENSE).
 
 ## Submitting a pull request
 
-1. [Fork](https://github.com/docker/github-builder-experimental/fork) and clone the repository
+1. [Fork](https://github.com/docker/github-builder/fork) and clone the repository
 2. Create a new branch: `git checkout -b my-branch-name`
 3. Make your changes
-4. Push to your fork and [submit a pull request](https://github.com/docker/github-builder-experimental/compare)
+4. Push to your fork and [submit a pull request](https://github.com/docker/github-builder/compare)
 5. Pat your self on the back and wait for your pull request to be reviewed and merged.
 
 Here are a few things you can do that will increase the likelihood of your pull request being accepted:

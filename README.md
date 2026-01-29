@@ -1,14 +1,5 @@
-[![Test build workflow](https://img.shields.io/github/actions/workflow/status/docker/github-builder-experimental/.test-build.yml?label=test%20build&logo=github&style=flat-square)](https://github.com/docker/github-builder-experimental/actions?workflow=.test-build)
-[![Test bake workflow](https://img.shields.io/github/actions/workflow/status/docker/github-builder-experimental/.test-bake.yml?label=test%20bake&logo=github&style=flat-square)](https://github.com/docker/github-builder-experimental/actions?workflow=.test-bake)
-
-> [!CAUTION]
-> Do not use it for your production workflows yet!
-
-## :test_tube: Experimental
-
-This repository is considered **EXPERIMENTAL** and under active development
-until further notice. It is subject to non-backward compatible changes or
-removal in any future version.
+[![Test build workflow](https://img.shields.io/github/actions/workflow/status/docker/github-builder/.test-build.yml?label=test%20build&logo=github&style=flat-square)](https://github.com/docker/github-builder/actions?workflow=.test-build)
+[![Test bake workflow](https://img.shields.io/github/actions/workflow/status/docker/github-builder/.test-bake.yml?label=test%20bake&logo=github&style=flat-square)](https://github.com/docker/github-builder/actions?workflow=.test-bake)
 
 ___
 
@@ -49,7 +40,7 @@ on:
   pull_request:
 
   build:
-    uses: docker/github-builder-experimental/.github/workflows/build.yml@main
+    uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read # to fetch the repository content
       id-token: write # for signing attestation(s) with GitHub OIDC Token
@@ -174,7 +165,7 @@ on:
   pull_request:
 
   build:
-    uses: docker/github-builder-experimental/.github/workflows/build.yml@main
+    uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read # to fetch the repository content
       id-token: write # for signing attestation(s) with GitHub OIDC Token
@@ -197,7 +188,7 @@ on:
   # in the `build` job and can be omitted. It's provided here as an example of
   # how to use the `verify.yml` reusable workflow.
   build-verify:
-    uses: docker/github-builder-experimental/.github/workflows/verify.yml@main
+    uses: docker/github-builder/.github/workflows/verify.yml@v1
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - build
@@ -286,7 +277,7 @@ on:
   pull_request:
 
   bake:
-    uses: docker/github-builder-experimental/.github/workflows/bake.yml@main
+    uses: docker/github-builder/.github/workflows/bake.yml@v1
     permissions:
       contents: read # to fetch the repository content
       id-token: write # for signing attestation(s) with GitHub OIDC Token
@@ -308,7 +299,7 @@ on:
   # in the `bake` job and can be omitted. It's provided here as an example of
   # how to use the `verify.yml` reusable workflow.
   bake-verify:
-    uses: docker/github-builder-experimental/.github/workflows/verify.yml@main
+    uses: docker/github-builder/.github/workflows/verify.yml@v1
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake

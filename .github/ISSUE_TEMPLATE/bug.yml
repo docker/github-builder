@@ -17,7 +17,7 @@ body:
       description: >
         Make sure you've read the contributing guidelines before proceeding.
       options:
-        - label: I've read the [contributing guidelines](https://github.com/docker/github-builder-experimental/blob/master/.github/CONTRIBUTING.md) and wholeheartedly agree
+        - label: I've read the [contributing guidelines](https://github.com/docker/github-builder/blob/main/.github/CONTRIBUTING.md) and wholeheartedly agree
           required: true
 
   - type: checkboxes

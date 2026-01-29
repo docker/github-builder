@@ -407,7 +407,7 @@ jobs:
                   [cache.gha.verify.policy]
                     timestampThreshold = 1
                     tlogThreshold = ${{ needs.prepare.outputs.privateRepo == 'true' && '0' || '1' }}
-                    subjectAlternativeName = "https://github.com/docker/github-builder-experimental/.github/workflows/build.yml*"
+                    subjectAlternativeName = "https://github.com/docker/github-builder/.github/workflows/build.yml*"
                     githubWorkflowRepository = "${{ github.repository }}"
                     issuer = "https://token.actions.githubusercontent.com"
                     runnerEnvironment = "github-hosted"
@@ -650,7 +650,7 @@ jobs:
             for (const imageName of inpImageNames) {
               if (ecrRegistryRegex.test(imageName) || ecrPublicRegistryRegex.test(imageName)) {
                 core.info(`Detected ECR image name: ${imageName}, adding delay to mitigate eventual consistency issue`);
-                // FIXME: remove once https://github.com/docker/github-builder-experimental/issues/30 is resolved
+                // FIXME: remove once https://github.com/docker/github-builder/issues/30 is resolved
                 await new Promise(resolve => setTimeout(resolve, 5000));
                 break;
               }
@@ -663,7 +663,7 @@ jobs:
             });
             
             const verifyResults = await sigstore.verifySignedManifests(signResults, {
-              certificateIdentityRegexp: `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`,
+              certificateIdentityRegexp: `^https://github.com/docker/github-builder/.github/workflows/build.yml.*$`,
               retryOnManifestUnknown: true
             });
             
@@ -695,7 +695,7 @@ jobs:
             });
             
             const verifyResults = await sigstore.verifySignedArtifacts(signResults, {
-              certificateIdentityRegexp: `^https://github.com/docker/github-builder-experimental/.github/workflows/build.yml.*$`
+              certificateIdentityRegexp: `^https://github.com/docker/github-builder/.github/workflows/build.yml.*$`
             });
             
             await core.group(`Verify commands`, async () => {
