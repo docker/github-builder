@@ -543,3 +543,77 @@ jobs:
         - registry: registry-1-stage.docker.io
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  bake-local-nomerge:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-name: bake-nomerge-output
+      artifact-upload: true
+      artifact-merge: false
+      context: test
+      output: local
+      sbom: true
+      sign: ${{ github.event_name != 'pull_request' }}
+      target: hello-cross
+
+  bake-local-nomerge-verify:
+    uses: ./.github/workflows/verify.yml
+    needs:
+      - bake-local-nomerge
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-local-nomerge.outputs) }}
+
+  bake-local-nomerge-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-local-nomerge
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-local-nomerge.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
+  bake-local-single-nomerge:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-name: bake-single-nomerge-output
+      artifact-upload: true
+      artifact-merge: false
+      context: test
+      output: local
+      sbom: true
+      sign: ${{ github.event_name != 'pull_request' }}
+      target: hello
+
+  bake-local-single-nomerge-verify:
+    uses: ./.github/workflows/verify.yml
+    needs:
+      - bake-local-single-nomerge
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-local-single-nomerge.outputs) }}
+
+  bake-local-single-nomerge-outputs:
+    runs-on: ubuntu-24.04
+    needs:
+      - bake-local-single-nomerge
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-local-single-nomerge.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));

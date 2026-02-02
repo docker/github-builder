@@ -33,6 +33,7 @@ jobs:
             const cosignVersion = builderOutputs['cosign-version'];
             const cosignVerifyCommands = builderOutputs['cosign-verify-commands'];
             const artifactName = builderOutputs['artifact-name'];
+            const artifactMerge = builderOutputs['artifact-merge'] === 'true';
             const outputType = builderOutputs['output-type'];
             const signed = builderOutputs['signed'] === 'true';
             if (!signed) {
@@ -44,7 +45,9 @@ jobs:
             
             core.setOutput('cosign-version', cosignVersion);
             core.setOutput('cosign-verify-commands', cosignVerifyCommands);
-            core.setOutput('artifact-name', artifactName);
+            core.setOutput('artifact-name', artifactMerge ? artifactName : '');
+            core.setOutput('artifact-pattern', artifactMerge ? '' : `${artifactName}*`);
+            core.setOutput('artifact-merge-multiple', artifactMerge ? 'false' : 'true');
             core.setOutput('output-type', outputType);
             core.setOutput('signed', signed);
       -
@@ -92,6 +95,8 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ${{ steps.vars.outputs.artifact-name }}
+          pattern: ${{ steps.vars.outputs.artifact-pattern }}
+          merge-multiple: ${{ steps.vars.outputs.artifact-merge-multiple }}
       -
         name: Verify signatures
         if: ${{ steps.vars.outputs.signed == 'true' }}
