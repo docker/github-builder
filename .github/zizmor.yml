@@ -1,0 +1,9 @@
+rules:
+  # rule does not apply to reusable worfklows where permissions are defined by
+  # the caller workflow and not the reusable workflow itself: https://github.com/docker/github-builder/issues/24
+  # https://docs.zizmor.sh/audits/#excessive-permissions
+  excessive-permissions:
+    ignore:
+      - bake.yml
+      - build.yml
+      - verify.yml
