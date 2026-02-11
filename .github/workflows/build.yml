@@ -515,6 +515,7 @@ jobs:
           INPUT_META-LABELS: ${{ steps.meta.outputs.labels }}
         with:
           script: |
+            const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
             const { GitHub } = require('@docker/actions-toolkit/lib/github');
             
             const inpPlatform = core.getInput('platform');
@@ -587,10 +588,10 @@ jobs:
             
             if (GitHub.context.payload.repository?.private ?? false) {
               // if this is a private repository, we set min provenance mode
-              core.setOutput('provenance', 'mode=min,version=v1');
+              core.setOutput('provenance', Build.resolveProvenanceAttrs(`mode=min,version=v1`));
             } else {
               // for a public repository, we set max provenance mode
-              core.setOutput('provenance', 'mode=max,version=v1');
+              core.setOutput('provenance', Build.resolveProvenanceAttrs(`mode=max,version=v1`));
             }
       -
         name: Login to registry
