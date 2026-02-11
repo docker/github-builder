@@ -582,6 +582,7 @@ jobs:
           script: |
             const os = require('os');
             const { Bake } = require('@docker/actions-toolkit/lib/buildx/bake');
+            const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
             const { GitHub } = require('@docker/actions-toolkit/lib/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
             
@@ -709,10 +710,10 @@ jobs:
               bakeOverrides.push('*.tags=');
               if (GitHub.context.payload.repository?.private ?? false) {
                 // if this is a private repository, we set min provenance mode
-                bakeOverrides.push('*.attest=type=provenance,mode=min,version=v1');
+                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=min,version=v1')}`);
               } else {
                 // for a public repository, we set max provenance mode
-                bakeOverrides.push('*.attest=type=provenance,mode=max,version=v1');
+                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=max,version=v1')}`);
               }
               if (inpPlatform) {
                 bakeOverrides.push(`*.platform=${inpPlatform}`);
