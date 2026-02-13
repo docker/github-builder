@@ -1,0 +1,119 @@
+# This internal workflow promotes a semver tag to a major release (e.g. v1.2.3 -> v1)
+name: .promote
+
+# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing semver tag to promote (e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Show inputs
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        with:
+          script: |
+            core.info(`tag: ${core.getInput('tag')}`);
+
+  promote:
+    runs-on: ubuntu-latest
+    environment: release-prod
+    needs:
+      - prepare
+    permissions:
+      contents: write # required to push the tag
+    steps:
+      -
+        name: Install npm deps
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            await core.group(`Install npm deps`, async () => {
+              await exec.exec('npm', ['install', 'semver']);
+            });
+      -
+        name: Check tag
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        with:
+          script: |
+            const semver = require('semver');
+            const tag = core.getInput('tag');
+            if (!semver.valid(tag)) {
+              core.setFailed(`Invalid tag: ${tag}`);
+            }
+            const major = `v${semver.major(tag)}`;
+            core.info(`MAJOR_TAG=${major}`);
+            core.exportVariable('MAJOR_TAG', major);
+      -
+        name: GitHub auth token from GitHub App
+        id: write-app
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ secrets.GITHUB_BUILDER_REPO_WRITE_APP_ID }}
+          private-key: ${{ secrets.GITHUB_BUILDER_REPO_WRITE_APP_PRIVATE_KEY }}
+          owner: docker
+          repositories: github-builder
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ steps.write-app.outputs.token }}
+      -
+        name: Configure Git
+        run: |
+          set -x
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+      -
+        name: Resolve target tag -> commit
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        with:
+          script: |
+            const tag = core.getInput('tag');
+            await exec.exec('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], {
+              ignoreReturnCode: true
+            }).then(res => {
+              if (res.exitCode !== 0) {
+                throw new Error(`Tag ${tag} does not exist`);
+              }
+            });
+            await exec.exec('git', ['rev-list', '-n', '1', `refs/tags/${tag}`]).then(res => {
+              const sha = res.stdout.trim();
+              core.info(`Tag ${tag} resolves to commit ${sha}`);
+              core.exportVariable('COMMIT_SHA', sha);
+            });
+      -
+        name: Move major tag to target commit and push
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_MAJOR-TAG: ${{ env.MAJOR_TAG }}
+          INPUT_COMMIT-SHA: ${{ env.COMMIT_SHA }}
+        with:
+          script: |
+            const tag = core.getInput('tag');
+            const majorTag = core.getInput('major-tag');
+            const commitSha = core.getInput('commit-sha');
+            await exec.exec('git', ['tag', '-a', '-f', majorTag, '-m', tag, commitSha]);
+            await exec.exec('git', ['tag', '-v', majorTag]);
+            await exec.exec('git', ['push', 'origin', `refs/tags/${majorTag}`, '--force']); // force push is required to move the tag
