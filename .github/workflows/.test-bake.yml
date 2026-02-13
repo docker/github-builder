@@ -547,3 +547,17 @@ jobs:
         - registry: registry-1-stage.docker.io
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  bake-namedcontexts:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-name: bake-namedcontexts-output
+      artifact-upload: true
+      context: test
+      output: local
+      sbom: true
+      sign: ${{ github.event_name != 'pull_request' }}
+      target: go-cross-with-contexts

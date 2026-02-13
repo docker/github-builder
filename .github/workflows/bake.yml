@@ -335,11 +335,46 @@ jobs:
                 if (!def) {
                   throw new Error('Bake definition not set');
                 }
-                const targets = Object.keys(def.target);
-                if (targets.length > 1) {
-                  throw new Error(`Only one target can be built at once, found: ${targets.join(', ')}`);
+                const targetDefs = def.target || {};
+                const targets = Object.keys(targetDefs);
+                if (targets.length === 0) {
+                  throw new Error('Bake definition does not contain any targets');
                 }
-                target = targets[0];
+                const parseContextTarget = value => {
+                  if (typeof value !== 'string') {
+                    return undefined;
+                  }
+                  const match = value.match(/^target:(.+)$/);
+                  return match ? match[1] : undefined;
+                };
+                const resolveTarget = () => {
+                  if (targetDefs[inpTarget]) {
+                    return inpTarget;
+                  }
+                  throw new Error(`Unable to resolve ${inpTarget} target, found: ${targets.join(', ')}`);
+                };
+                target = resolveTarget();
+                const allowedTargets = new Set([target]);
+                const stack = [target];
+                while (stack.length > 0) {
+                  const current = stack.pop();
+                  const contexts = targetDefs[current]?.contexts || {};
+                  for (const contextValue of Object.values(contexts)) {
+                    const dependencyTarget = parseContextTarget(contextValue);
+                    if (!dependencyTarget || allowedTargets.has(dependencyTarget)) {
+                      continue;
+                    }
+                    if (!targetDefs[dependencyTarget]) {
+                      throw new Error(`Target ${current} uses unknown named context target ${dependencyTarget}`);
+                    }
+                    allowedTargets.add(dependencyTarget);
+                    stack.push(dependencyTarget);
+                  }
+                }
+                const unsupportedTargets = targets.filter(name => !allowedTargets.has(name));
+                if (unsupportedTargets.length > 0) {
+                  throw new Error(`Only one target can be built at once, found unsupported targets: ${unsupportedTargets.join(', ')}`);
+                }
               });
             } catch (error) {
               core.setFailed(error);
@@ -581,7 +616,6 @@ jobs:
         with:
           script: |
             const os = require('os');
-            const { Bake } = require('@docker/actions-toolkit/lib/buildx/bake');
             const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
             const { GitHub } = require('@docker/actions-toolkit/lib/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
@@ -613,9 +647,14 @@ jobs:
             const inpGitHubToken = core.getInput('github-token');
             
             const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
-            await core.group(`Set bake source`, async () => {
+            await core.group(`Set source output`, async () => {
               core.info(bakeSource);
               core.setOutput('source', bakeSource);
+            });
+            
+            await core.group(`Set target output`, async () => {
+              core.info(inpTarget);
+              core.setOutput('target', inpTarget);
             });
             
             const sbom = inpSbom ? `generator=${inpSbomImage}` : 'false';
@@ -641,34 +680,6 @@ jobs:
               core.info(JSON.stringify(envs, null, 2));
               core.setOutput('envs', JSON.stringify(envs));
             });
-            
-            let target;
-            try {
-              await core.group(`Validating definition`, async () => {
-                const bake = new Bake();
-                const def = await bake.getDefinition({
-                  files: inpFiles,
-                  overrides: inpSet,
-                  sbom: sbom,
-                  source: bakeSource,
-                  targets: [inpTarget]
-                }, {
-                  env: Object.keys(envs).length > 0 ? envs : undefined
-                });
-                if (!def) {
-                  throw new Error('Bake definition not set');
-                }
-                const targets = Object.keys(def.target);
-                if (targets.length > 1) {
-                  throw new Error(`Only one target can be built at once, found: ${targets.join(', ')}`);
-                }
-                target = targets[0];
-                core.setOutput('target', target);
-              });
-            } catch (error) {
-              core.setFailed(error);
-              return;
-            }
             
             let bakeFiles = inpFiles;
             await core.group(`Set bake files`, async () => {
@@ -719,8 +730,8 @@ jobs:
                 bakeOverrides.push(`*.platform=${inpPlatform}`);
               }
               if (inpCache) {
-                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || target}${platformPairSuffix}`);
-                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || target}${platformPairSuffix},mode=${inpCacheMode}`);
+                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}`);
+                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix},mode=${inpCacheMode}`);
               }
               core.info(JSON.stringify(bakeOverrides, null, 2));
               core.setOutput('overrides', bakeOverrides.join(os.EOL));

@@ -6,6 +6,8 @@ ARG XX_VERSION="1.7.0"
 # xx is a helper for cross-compilation
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:${XX_VERSION} AS xx
 
+FROM scratch AS gen
+
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS base
 COPY --from=xx / /
 RUN apk add --no-cache file git
@@ -14,6 +16,7 @@ WORKDIR /src
 
 FROM base AS build
 ARG TARGETPLATFORM
+COPY --from=gen / /out
 RUN --mount=type=bind,target=. \
     --mount=target=/root/.cache,type=cache \
   xx-go build -trimpath -o /out/myapp . \
