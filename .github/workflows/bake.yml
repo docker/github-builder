@@ -28,6 +28,11 @@ on:
         description: "Upload build output GitHub artifact (for local output)"
         required: false
         default: false
+      artifact-merge:
+        type: boolean
+        description: "Merge output for multi-platforms build into a single artifact (for local output)"
+        required: false
+        default: true
       cache:
         type: boolean
         description: "Enable cache to GitHub Actions cache backend"
@@ -138,6 +143,9 @@ on:
       artifact-name:
         description: "Name of the uploaded artifact (for local output)"
         value: ${{ jobs.finalize.outputs.artifact-name }}
+      artifact-merge:
+        description: "Whether multiple artifacts were merged (for local output)"
+        value: ${{ jobs.finalize.outputs.artifact-merge }}
       output-type:
         description: "Build output type"
         value: ${{ jobs.finalize.outputs.output-type }}
@@ -560,6 +568,7 @@ jobs:
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_ARTIFACT-MERGE: ${{ inputs.artifact-merge }}
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
@@ -588,10 +597,10 @@ jobs:
             
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
-            core.setOutput('platform-pair-suffix', platformPairSuffix);
             
             const inpSbomImage = core.getInput('sbom-image');
             const inpLocalExportDir = core.getInput('local-export-dir');
+            const inpArtifactMerge = core.getBooleanInput('artifact-merge');
             
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
@@ -617,6 +626,12 @@ jobs:
               core.info(bakeSource);
               core.setOutput('source', bakeSource);
             });
+            
+            if (platformPairSuffix) {
+              core.setOutput('artifact-suffix', platformPairSuffix);
+            } else if (inpArtifactMerge) {
+              core.setOutput('artifact-suffix', '0');
+            }
             
             const sbom = inpSbom ? `generator=${inpSbomImage}` : 'false';
             await core.group(`Set sbom`, async () => {
@@ -853,7 +868,7 @@ jobs:
         if: ${{ inputs.output == 'local' && inputs.artifact-upload }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix || '0' }}
+          name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.artifact-suffix }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
           if-no-files-found: error
       -
@@ -864,22 +879,17 @@ jobs:
           INPUT_INDEX: ${{ matrix.index }}
           INPUT_VERIFY-COMMANDS: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
           INPUT_IMAGE-DIGEST: ${{ steps.get-image-digest.outputs.digest }}
-          INPUT_ARTIFACT-NAME: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix }}
-          INPUT_ARTIFACT-UPLOAD: ${{ inputs.artifact-upload }}
           INPUT_SIGNED: ${{ needs.prepare.outputs.sign }}
         with:
           script: |
             const inpIndex = core.getInput('index');
             const inpVerifyCommands = core.getInput('verify-commands');
             const inpImageDigest = core.getInput('image-digest');
-            const inpArtifactName = core.getInput('artifact-name');
-            const inpArtifactUpload = core.getBooleanInput('artifact-upload');
             const inpSigned = core.getBooleanInput('signed');
             
             const result = {
               verifyCommands: inpVerifyCommands,
               imageDigest: inpImageDigest,
-              artifactName: inpArtifactUpload ? inpArtifactName : '',
               signed: inpSigned
             }
             core.info(JSON.stringify(result, null, 2));
@@ -893,6 +903,7 @@ jobs:
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.set.outputs.cosign-verify-commands }}
       artifact-name: ${{ inputs.artifact-upload && inputs.artifact-name || '' }}
+      artifact-merge: ${{ inputs.artifact-merge }}
       output-type: ${{ inputs.output }}
       signed: ${{ needs.prepare.outputs.sign }}
     needs:
@@ -974,7 +985,7 @@ jobs:
             }
       -
         name: Merge artifacts
-        if: ${{ inputs.output == 'local' && inputs.artifact-upload }}
+        if: ${{ inputs.output == 'local' && inputs.artifact-upload && inputs.artifact-merge }}
         uses: actions/upload-artifact/merge@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ inputs.artifact-name }}
