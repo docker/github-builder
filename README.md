@@ -254,7 +254,7 @@ on:
 
 ### Bake reusable workflow
 
-The [`bake.yml` reusable workflow](.github/workflows/build.yml) lets you build
+The [`bake.yml` reusable workflow](.github/workflows/bake.yml) lets you build
 container images and artifacts from a [Bake definition](https://docs.docker.com/build/bake/)
 with a user experience similar to [`docker/bake-action`](https://github.com/docker/bake-action/).
 It provides a Docker-maintained, opinionated build pipeline that applies best
