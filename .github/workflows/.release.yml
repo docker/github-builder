@@ -1,0 +1,114 @@
+# This internal workflow creates a semver git tag.
+name: .release
+
+# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version (e.g. v1.2.3)"
+        required: true
+        type: string
+      ref:
+        description: "Optional Git ref to tag (defaults to main HEAD)"
+        required: false
+        type: string
+        default: refs/heads/main
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Show inputs
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_REF: ${{ inputs.ref }}
+        with:
+          script: |
+            core.info(`version: ${core.getInput('version')}`);
+            core.info(`ref: ${core.getInput('ref')}`);
+
+  release:
+    runs-on: ubuntu-latest
+    environment: release-prod
+    needs:
+      - prepare
+    permissions:
+      contents: write # required to push the tag
+    steps:
+      -
+        name: Install npm deps
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            await core.group(`Install npm deps`, async () => {
+              await exec.exec('npm', ['install', 'semver']);
+            });
+      -
+        name: Check version
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const semver = require('semver');
+            const version = core.getInput('version');
+            if (!semver.valid(version)) {
+              core.setFailed(`Invalid version: ${version}`);
+            }
+      -
+        name: GitHub auth token from GitHub App
+        id: write-app
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ secrets.GITHUB_BUILDER_REPO_WRITE_APP_ID }}
+          private-key: ${{ secrets.GITHUB_BUILDER_REPO_WRITE_APP_PRIVATE_KEY }}
+          owner: docker
+          repositories: github-builder
+      -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          token: ${{ steps.write-app.outputs.token }}
+      -
+        name: Configure Git
+        run: |
+          set -x
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+      -
+        name: Ensure tag does not exist
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const version = core.getInput('version');
+            await exec.exec('git', ['rev-parse', '-q', '--verify', `refs/tags/${version}`], {
+              ignoreReturnCode: true
+            }).then(res => {
+              if (res.exitCode === 0) {
+                throw new Error(`Tag ${version} already exists at ${res.stdout.trim()}`);
+              }
+            });
+      -
+        name: Create and push tag
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const version = core.getInput('version');
+            await exec.exec('git', ['tag', '-a', version, '-m', version]);
+            await exec.exec('git', ['push', 'origin', `refs/tags/${version}`]);
