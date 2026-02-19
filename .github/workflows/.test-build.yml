@@ -578,3 +578,27 @@ jobs:
         - registry: registry-1-stage.docker.io
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  build-ghcr-index-annotations:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      annotations: |
+        io.github.docker.github-builder.test-index-annotation=build-${{ github.run_id }}
+      file: test/hello.Dockerfile
+      output: image
+      platforms: linux/amd64,linux/arm64
+      push: ${{ github.event_name != 'pull_request' }}
+      sbom: true
+      set-meta-annotations: true
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=build-index-annotations-${{ github.run_id }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
