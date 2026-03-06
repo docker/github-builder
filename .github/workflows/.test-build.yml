@@ -578,3 +578,24 @@ jobs:
         - registry: registry-1-stage.docker.io
           username: ${{ vars.DOCKERHUB_STAGE_USERNAME }}
           password: ${{ secrets.DOCKERHUB_STAGE_TOKEN }}
+
+  build-local-login:
+    uses: ./.github/workflows/build.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-name: build-login-output
+      artifact-upload: true
+      file: test/dhi.Dockerfile
+      output: local
+      registry-login: true
+      sbom: true
+      sign: true
+    secrets:
+      registry-auths: |
+        - registry: dhi.io
+          username: ${{ vars.DOCKERPUBLICBOT_USERNAME }}
+          password: ${{ secrets.DOCKERPUBLICBOT_READ_PAT }}
+          scope: 'dhi.io@pull'
