@@ -138,6 +138,9 @@ on:
       artifact-name:
         description: "Name of the uploaded artifact (for local output)"
         value: ${{ jobs.finalize.outputs.artifact-name }}
+      image-digest:
+        description: "Digest of the built image (for image output if pushed)"
+        value: ${{ jobs.finalize.outputs.image-digest }}
       output-type:
         description: "Build output type"
         value: ${{ jobs.finalize.outputs.output-type }}
@@ -904,12 +907,21 @@ jobs:
       cosign-version: ${{ env.COSIGN_VERSION }}
       cosign-verify-commands: ${{ steps.set.outputs.cosign-verify-commands }}
       artifact-name: ${{ inputs.artifact-upload && inputs.artifact-name || '' }}
+      image-digest: ${{ steps.manifest.outputs.digest }}
       output-type: ${{ inputs.output }}
       signed: ${{ needs.prepare.outputs.sign }}
     needs:
       - prepare
       - build
     steps:
+      -
+        name: Install @docker/actions-toolkit
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+        with:
+          script: |
+            await exec.exec('npm', ['install', '--prefer-offline', '--ignore-scripts', core.getInput('dat-module')]);
       -
         name: Docker meta
         id: meta
@@ -941,6 +953,7 @@ jobs:
           cache-binary: false
       -
         name: Create manifest
+        id: manifest
         if: ${{ inputs.output == 'image' }}
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
@@ -950,6 +963,8 @@ jobs:
           INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
         with:
           script: |
+            const { ImageTools } = require('@docker/actions-toolkit/lib/buildx/imagetools');
+            
             const inpPush = core.getBooleanInput('push');
             const inpImageNames = core.getMultilineInput('image-names');
             const inpTagNames = core.getMultilineInput('tag-names');
@@ -967,21 +982,32 @@ jobs:
               return;
             }
             
+            let digest;
             for (const imageName of inpImageNames) {
-              let createArgs = ['buildx', 'imagetools', 'create'];
+              const tags = [];
               for (const tag of inpTagNames) {
-                createArgs.push('-t', `${imageName}:${tag}`);
-              }
-              for (const digest of digests) {
-                createArgs.push(digest);
+                tags.push(`${imageName}:${tag}`);
               }
               if (inpPush) {
-                await exec.exec('docker', createArgs);
-              } else {
-                await core.group(`Generated imagetools create command for ${imageName}`, async () => {
-                  core.info(`docker ${createArgs.join(' ')}`);
+                const result = await new ImageTools().create({
+                  sources: digests,
+                  tags: tags
                 });
+                core.info(`Created manifest with digest: ${result.digest}`);
+                digest = result.digest;
+              } else {
+                let createArgs = ['buildx', 'imagetools', 'create'];
+                for (const tag of tags) {
+                  createArgs.push('-t', tag);
+                }
+                for (const digest of digests) {
+                  createArgs.push(digest);
+                }
+                core.info(`Generated command for ${imageName}: docker ${createArgs.join(' ')}`);
               }
+            }
+            if (digest) {
+              core.setOutput('digest', digest);
             }
       -
         name: Merge artifacts
