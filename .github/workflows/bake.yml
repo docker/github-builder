@@ -150,7 +150,7 @@ env:
   BUILDKIT_IMAGE: "moby/buildkit:v0.27.1"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.10.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
-  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.76.0"
+  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.80.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
@@ -250,7 +250,7 @@ jobs:
           script: |
             const os = require('os');
             const { Bake } = require('@docker/actions-toolkit/lib/buildx/bake');
-            const { GitHub } = require('@docker/actions-toolkit/lib/github');
+            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
 
             const inpSbomImage = core.getInput('sbom-image');
@@ -617,7 +617,7 @@ jobs:
           script: |
             const os = require('os');
             const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
-            const { GitHub } = require('@docker/actions-toolkit/lib/github');
+            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
             
             const inpPlatform = core.getInput('platform');

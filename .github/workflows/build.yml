@@ -153,7 +153,7 @@ env:
   BUILDKIT_IMAGE: "moby/buildkit:v0.27.1"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.10.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
-  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.76.0"
+  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.80.0"
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
@@ -245,7 +245,7 @@ jobs:
           INPUT_SIGN: ${{ inputs.sign }}
         with:
           script: |
-            const { GitHub } = require('@docker/actions-toolkit/lib/github');
+            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
             
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
@@ -516,7 +516,7 @@ jobs:
         with:
           script: |
             const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
-            const { GitHub } = require('@docker/actions-toolkit/lib/github');
+            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
             
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
