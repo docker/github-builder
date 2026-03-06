@@ -561,3 +561,27 @@ jobs:
       sbom: true
       sign: ${{ github.event_name != 'pull_request' }}
       target: go-cross-with-contexts
+
+  bake-ghcr-index-annotations:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      context: test
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      sbom: true
+      target: hello-cross
+      set-meta-annotations: true
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=bake-index-annotations-${{ github.run_id }}
+      meta-annotations: |
+        io.github.docker.github-builder.test-index-annotation=bake-${{ github.run_id }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
