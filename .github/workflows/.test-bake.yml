@@ -561,3 +561,25 @@ jobs:
       sbom: true
       sign: ${{ github.event_name != 'pull_request' }}
       target: go-cross-with-contexts
+
+  bake-local-login:
+    uses: ./.github/workflows/bake.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-name: bake-login-output
+      artifact-upload: true
+      context: test
+      output: local
+      registry-login: true
+      sbom: true
+      sign: true
+      target: dhi
+    secrets:
+      registry-auths: |
+        - registry: dhi.io
+          username: ${{ vars.DOCKERPUBLICBOT_USERNAME }}
+          password: ${{ secrets.DOCKERPUBLICBOT_READ_PAT }}
+          scope: 'dhi.io@pull'
