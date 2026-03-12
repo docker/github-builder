@@ -146,7 +146,7 @@ jobs:
         name: Scan for vulnerabilities
         uses: crazy-max/ghaction-container-scan@a0a3900b79d158c85ccf034e5368fae620a9233a # v4.0.0
         with:
-          image: public.ecr.aws/q3b5f1u4/test-docker-action@${{ needs.build-aws.outputs.image-digest }}
+          image: public.ecr.aws/q3b5f1u4/test-docker-action@${{ needs.build-aws.outputs.digest }}
 
   build-aws-nosign:
     uses: ./.github/workflows/build.yml
