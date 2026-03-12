@@ -129,6 +129,25 @@ jobs:
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
 
+  bake-aws-scan:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - bake-aws
+    steps:
+      -
+        name: Login to registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: public.ecr.aws
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      -
+        name: Scan for vulnerabilities
+        uses: crazy-max/ghaction-container-scan@a0a3900b79d158c85ccf034e5368fae620a9233a # v4.0.0
+        with:
+          image: public.ecr.aws/q3b5f1u4/test-docker-action@${{ needs.bake-aws.outputs.digest }}
+
   bake-aws-nosign:
     uses: ./.github/workflows/bake.yml
     permissions:

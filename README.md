@@ -12,9 +12,11 @@ ___
   * [Build reusable workflow](#build-reusable-workflow)
     * [Inputs](#inputs)
     * [Secrets](#secrets)
+    * [Outputs](#outputs)
   * [Bake reusable workflow](#bake-reusable-workflow)
-    * [Inputs](#inputs)
-    * [Secrets](#secrets)
+    * [Inputs](#inputs-1)
+    * [Secrets](#secrets-1)
+    * [Outputs](#outputs-1)
 
 ## Overview
 
@@ -252,6 +254,22 @@ on:
 | `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
 | `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
 
+#### Outputs
+
+These outputs are available as `needs.<job_id>.outputs.*` and can be passed
+directly to the [`verify.yml` reusable workflow](.github/workflows/verify.yml)
+with `builder-outputs: ${{ toJSON(needs.<job_id>.outputs) }}`.
+
+| Name                     | Type   | Description                                                                  |
+|--------------------------|--------|------------------------------------------------------------------------------|
+| `meta-json`              | JSON   | Metadata JSON output from `docker/metadata-action` (for `image` output)      |
+| `cosign-version`         | String | Cosign version used for verification                                         |
+| `cosign-verify-commands` | List   | Newline-delimited `cosign verify` commands generated when signing is enabled |
+| `artifact-name`          | String | Name of the uploaded merged artifact (for `local` output)                    |
+| `digest`                 | String | Digest of the image pushed or artifact uploaded                              |
+| `output-type`            | String | Output type selected for the workflow (`image` or `local`)                   |
+| `signed`                 | Bool   | Whether attestation manifests or local artifacts were signed                 |
+
 ### Bake reusable workflow
 
 The [`bake.yml` reusable workflow](.github/workflows/bake.yml) lets you build
@@ -357,3 +375,19 @@ on:
 |------------------|-----------------------|--------------------------------------------------------------------------------|
 | `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
 | `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+
+#### Outputs
+
+These outputs are available as `needs.<job_id>.outputs.*` and can be passed
+directly to the [`verify.yml` reusable workflow](.github/workflows/verify.yml)
+with `builder-outputs: ${{ toJSON(needs.<job_id>.outputs) }}`.
+
+| Name                     | Type   | Description                                                                  |
+|--------------------------|--------|------------------------------------------------------------------------------|
+| `meta-json`              | JSON   | Metadata JSON output from `docker/metadata-action` (for `image` output)      |
+| `cosign-version`         | String | Cosign version used for verification                                         |
+| `cosign-verify-commands` | List   | Newline-delimited `cosign verify` commands generated when signing is enabled |
+| `artifact-name`          | String | Name of the uploaded merged artifact (for `local` output)                    |
+| `digest`                 | String | Digest of the image pushed or artifact uploaded                              |
+| `output-type`            | String | Output type selected for the workflow (`image` or `local`)                   |
+| `signed`                 | Bool   | Whether attestation manifests or local artifacts were signed                 |
