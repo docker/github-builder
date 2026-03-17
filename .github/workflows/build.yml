@@ -311,7 +311,7 @@ jobs:
                   includes.push({
                     index: index,
                     platform: platform,
-                    runner: runner === 'auto' ? ((!privateRepo && platform.startsWith('linux/arm')) ? 'ubuntu-24.04-arm' : 'ubuntu-24.04') : runner
+                    runner: runner === 'auto' ? (platform.startsWith('linux/arm') ? 'ubuntu-24.04-arm' : 'ubuntu-24.04') : runner
                   });
                 });
               }
