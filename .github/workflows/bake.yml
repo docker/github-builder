@@ -149,8 +149,8 @@ on:
         value: ${{ jobs.finalize.outputs.signed }}
 
 env:
-  BUILDX_VERSION: "v0.32.1"
-  BUILDKIT_IMAGE: "moby/buildkit:v0.28.0"
+  BUILDX_VERSION: "https://github.com/crazy-max/buildx.git#buildkit-fetch-depth"
+  BUILDKIT_IMAGE: "crazymax/buildkit:fetch-depth"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.10.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.84.1"
@@ -204,7 +204,6 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           INPUT_IMAGES: |
-            ${{ env.BUILDKIT_IMAGE }}
             ${{ env.SBOM_IMAGE }}
             ${{ env.BINFMT_IMAGE }}
         with:
@@ -310,7 +309,7 @@ jobs:
               return;
             }
 
-            const bakeSource = await new Build().gitContext({subdir: inpContext});
+            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git?ref=${process.env.GITHUB_REF}&subdir=${inpContext}&fetch-depth=0`;
             await core.group(`Set bake source`, async () => {
               core.info(bakeSource);
             });
@@ -678,7 +677,7 @@ jobs:
             };
             const renderTemplate = value => Handlebars.compile(value, {noEscape: true})({meta});
             
-            const bakeSource = await new Build().gitContext({subdir: inpContext});
+            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git?ref=${process.env.GITHUB_REF}&subdir=${inpContext}&fetch-depth=0`;
             await core.group(`Set source output`, async () => {
               core.info(bakeSource);
               core.setOutput('source', bakeSource);
