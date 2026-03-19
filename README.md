@@ -41,6 +41,7 @@ on:
       - 'v*'
   pull_request:
 
+jobs:
   build:
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
@@ -166,6 +167,7 @@ on:
       - 'v*'
   pull_request:
 
+jobs:
   build:
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
@@ -317,6 +319,7 @@ on:
       - 'v*'
   pull_request:
 
+jobs:
   bake:
     uses: docker/github-builder/.github/workflows/bake.yml@v1
     permissions:
