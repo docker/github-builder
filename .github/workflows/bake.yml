@@ -781,7 +781,7 @@ jobs:
           targets: ${{ steps.prepare.outputs.target }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
-        env: ${{ fromJson(steps.prepare.outputs.envs) }}
+        env: ${{ fromJson(steps.prepare.outputs.envs || '{}') }}
       -
         name: Get image digest
         id: get-image-digest
