@@ -13,6 +13,11 @@ on:
         description: "Whether to distribute the build across multiple runners (one platform per runner)"
         required: false
         default: true
+      fail-fast:
+        type: boolean
+        description: "Whether to cancel all in-progress and queued jobs in the matrix if any job fails"
+        required: false
+        default: false
       setup-qemu:
         type: boolean
         description: "Runs the setup-qemu-action step to install QEMU static binaries"
@@ -431,7 +436,7 @@ jobs:
     needs:
       - prepare
     strategy:
-      fail-fast: false
+      fail-fast: ${{ inputs.fail-fast }}
       matrix:
         include: ${{ fromJson(needs.prepare.outputs.includes) }}
     outputs:
