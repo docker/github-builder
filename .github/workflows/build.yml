@@ -158,7 +158,7 @@ on:
 
 env:
   BUILDX_VERSION: "v0.32.1"
-  BUILDKIT_IMAGE: "moby/buildkit:v0.28.0"
+  BUILDKIT_IMAGE: "moby/buildkit:v0.28.1"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.10.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.85.0"
