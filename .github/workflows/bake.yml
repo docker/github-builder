@@ -163,6 +163,7 @@ env:
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
+  BUILDX_SEND_GIT_QUERY_AS_INPUT: "true"
 
 jobs:
   prepare:
@@ -232,6 +233,14 @@ jobs:
               });
             }
       -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          version: ${{ env.BUILDX_VERSION }}
+          cache-binary: false
+          driver-opts: |
+            image=${{ env.BUILDKIT_IMAGE }}
+      -
         name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
       -
@@ -259,6 +268,7 @@ jobs:
           script: |
             const os = require('os');
             const { Bake } = require('@docker/actions-toolkit/lib/buildx/bake');
+            const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
             const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
             const { Util } = require('@docker/actions-toolkit/lib/util');
 
@@ -305,7 +315,7 @@ jobs:
               return;
             }
 
-            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
+            const bakeSource = await new Build().gitContext({subdir: inpContext});
             await core.group(`Set bake source`, async () => {
               core.info(bakeSource);
             });
@@ -673,7 +683,7 @@ jobs:
             };
             const renderTemplate = value => Handlebars.compile(value, {noEscape: true})({meta});
             
-            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
+            const bakeSource = await new Build().gitContext({subdir: inpContext});
             await core.group(`Set source output`, async () => {
               core.info(bakeSource);
               core.setOutput('source', bakeSource);

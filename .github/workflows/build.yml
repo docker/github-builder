@@ -166,6 +166,7 @@ env:
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
+  BUILDX_SEND_GIT_QUERY_AS_INPUT: "true"
 
 jobs:
   prepare:
@@ -575,7 +576,7 @@ jobs:
             const renderTemplate = value => Handlebars.compile(value, {noEscape: true})({meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
-            const buildContext = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git#${process.env.GITHUB_REF}:${inpContext}`;
+            const buildContext = await new Build().gitContext({subdir: inpContext});
             core.setOutput('context', buildContext);
             
             switch (inpOutput) {
