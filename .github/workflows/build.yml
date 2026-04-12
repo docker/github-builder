@@ -55,6 +55,16 @@ on:
         description: "Cache layers to export if cache enabled (min or max)"
         required: false
         default: 'min'
+      repository:
+        type: string
+        description: "Git repository to use for Git context, in the format of owner/repo. (defaults to the current repository)"
+        required: false
+        default: ${{ github.repository }}
+      ref:
+        type: string
+        description: "Git ref to use for Git context. (defaults to the default branch of the repository)"
+        required: false
+        default: ${{ github.ref }}
       context:
         type: string
         description: "Context to build from in the Git working tree"
@@ -166,7 +176,6 @@ env:
   COSIGN_VERSION: "v3.0.2"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
-  BUILDX_SEND_GIT_QUERY_AS_INPUT: "true"
 
 jobs:
   prepare:
@@ -520,6 +529,8 @@ jobs:
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
           INPUT_LABELS: ${{ inputs.labels }}
+          INPUT_REPOSITORY: ${{ inputs.repository }}
+          INPUT_REF: ${{ inputs.ref }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
           INPUT_PLATFORMS: ${{ inputs.platforms }}
@@ -552,6 +563,8 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpRepository = core.getInput('repository');
+            const inpRef = core.getInput('ref');
             const inpContext = core.getInput('context');
             const inpLabels = core.getInput('labels');
             const inpOutput = core.getInput('output');
@@ -576,7 +589,7 @@ jobs:
             const renderTemplate = value => Handlebars.compile(value, {noEscape: true})({meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
-            const buildContext = await new Build().gitContext({subdir: inpContext});
+            const buildContext = `${process.env.GITHUB_SERVER_URL}/${inpRepository}.git#${inpRef}:${inpContext}`;
             core.setOutput('context', buildContext);
             
             switch (inpOutput) {
