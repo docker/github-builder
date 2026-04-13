@@ -173,6 +173,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       includes: ${{ steps.set.outputs.includes }}
+      metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
@@ -246,6 +247,7 @@ jobs:
         env:
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
           INPUT_ACTIONS-ID-TOKEN-SET:  ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN != '' && env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
+          INPUT_META-IMAGES: ${{ inputs.meta-images }}
           INPUT_RUNNER: ${{ inputs.runner }}
           INPUT_DISTRIBUTE: ${{ inputs.distribute }}
           INPUT_ARTIFACT-UPLOAD: ${{ inputs.artifact-upload }}
@@ -260,6 +262,7 @@ jobs:
             
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
             const inpActionsIdTokenSet = core.getBooleanInput('actions-id-token-set');
+            const inpMetaImages = core.getMultilineInput('meta-images');
             
             const inpRunner = core.getInput('runner');
             const inpDistribute = core.getBooleanInput('distribute');
@@ -303,6 +306,12 @@ jobs:
             await core.group(`Set privateRepo output`, async () => {
               core.info(`privateRepo: ${privateRepo}`);
               core.setOutput('privateRepo', privateRepo);
+            });
+
+            const metaImages = inpMetaImages.map(image => image.toLowerCase());
+            await core.group(`Set metaImages output`, async () => {
+              core.info(JSON.stringify(metaImages, null, 2));
+              core.setOutput('metaImages', metaImages.join('\n'));
             });
             
             await core.group(`Set includes output`, async () => {
@@ -387,7 +396,7 @@ jobs:
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ${{ inputs.meta-images }}
+          images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
           flavor: ${{ inputs.meta-flavor }}
           labels: ${{ inputs.meta-labels }}
@@ -526,7 +535,7 @@ jobs:
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_SBOM: ${{ inputs.sbom }}
           INPUT_TARGET: ${{ inputs.target }}
-          INPUT_META-IMAGES: ${{ inputs.meta-images }}
+          INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
           INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
           INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
@@ -681,7 +690,7 @@ jobs:
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' }}
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
+          INPUT_IMAGE-NAMES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
         with:
           script: |
@@ -813,7 +822,7 @@ jobs:
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ${{ inputs.meta-images }}
+          images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
           flavor: ${{ inputs.meta-flavor }}
           labels: ${{ inputs.meta-labels }}
@@ -842,7 +851,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           INPUT_PUSH: ${{ inputs.push }}
-          INPUT_IMAGE-NAMES: ${{ inputs.meta-images }}
+          INPUT_IMAGE-NAMES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_TAG-NAMES: ${{ steps.meta.outputs.tag-names }}
           INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
           INPUT_ANNOTATIONS: ${{ inputs.annotations }}
