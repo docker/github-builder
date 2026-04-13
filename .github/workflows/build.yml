@@ -750,7 +750,7 @@ jobs:
       -
         name: Upload artifact
         if: ${{ inputs.output == 'local' && inputs.artifact-upload }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix || '0' }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
@@ -920,7 +920,7 @@ jobs:
         name: Merge artifacts
         id: artifact
         if: ${{ inputs.output == 'local' && inputs.artifact-upload }}
-        uses: actions/upload-artifact/merge@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact/merge@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ inputs.artifact-name }}
           pattern: ${{ inputs.artifact-name }}*
