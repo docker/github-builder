@@ -474,6 +474,17 @@ jobs:
       result_19: ${{ steps.result.outputs.result_19 }}
     steps:
       -
+        name: Require GitHub-hosted runner
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          INPUT_RUNNER-ENVIRONMENT: ${{ runner.environment }}
+        with:
+          script: |
+            const runnerEnvironment = core.getInput('runner-environment');
+            if (runnerEnvironment !== 'github-hosted') {
+              core.setFailed(`This workflow requires a GitHub-hosted runner, got: ${runnerEnvironment || 'unknown'}`);
+            }
+      -
         name: Install dependencies
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
