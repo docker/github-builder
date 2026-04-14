@@ -640,3 +640,27 @@ jobs:
         - registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ghcr-image-casing:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      build-args: |
+        VERSION={{meta.version}}
+      file: test/hello.Dockerfile
+      output: image
+      platforms: linux/amd64,linux/arm64
+      push: ${{ github.event_name != 'pull_request' }}
+      sbom: true
+      set-meta-annotations: true
+      meta-images: ghcr.io/docker/GitHub-Builder-Test
+      meta-tags: |
+        type=raw,value=build-image-casing-${{ github.run_id }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}

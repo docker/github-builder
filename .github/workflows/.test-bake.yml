@@ -621,3 +621,27 @@ jobs:
         - registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+  bake-ghcr-image-casing:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      context: test
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      sbom: true
+      set: |
+        *.args.VERSION={{meta.version}}
+      target: hello-cross
+      set-meta-annotations: true
+      meta-images: ghcr.io/docker/GitHub-Builder-Test
+      meta-tags: |
+        type=raw,value=bake-image-casing-${{ github.run_id }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
