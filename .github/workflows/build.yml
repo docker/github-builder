@@ -180,7 +180,7 @@ jobs:
     steps:
       -
         name: Install dependencies
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
         with:
@@ -188,7 +188,7 @@ jobs:
             await exec.exec('npm', ['install', '--prefer-offline', '--ignore-scripts', core.getInput('dat-module')]);
       -
         name: Install Cosign
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_COSIGN-VERSION: ${{ env.COSIGN_VERSION }}
         with:
@@ -211,7 +211,7 @@ jobs:
             await cosign.printVersion();
       -
         name: Check dependencies signatures
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_IMAGES: |
             ${{ env.BUILDKIT_IMAGE }}
@@ -243,7 +243,7 @@ jobs:
       -
         name: Set outputs
         id: set
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
           INPUT_ACTIONS-ID-TOKEN-SET:  ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN != '' && env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
@@ -377,7 +377,7 @@ jobs:
     steps:
       -
         name: Install dependencies
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
           INPUT_HANDLEBARS-MODULE: ${{ env.HANDLEBARS_MODULE }}
@@ -441,7 +441,7 @@ jobs:
       -
         name: Install Cosign
         if: ${{ needs.prepare.outputs.sign == 'true' || inputs.cache }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_COSIGN-VERSION: ${{ env.COSIGN_VERSION }}
           INPUT_BUILDER-NAME: ${{ steps.buildx.outputs.name }}
@@ -517,7 +517,7 @@ jobs:
       -
         name: Prepare
         id: prepare
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
@@ -688,7 +688,7 @@ jobs:
         name: Signing attestation manifests
         id: signing-attestation-manifests
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_IMAGE-NAMES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
@@ -724,7 +724,7 @@ jobs:
         name: Signing local artifacts
         id: signing-local-artifacts
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'local' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_LOCAL-OUTPUT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
         with:
@@ -767,7 +767,7 @@ jobs:
       -
         name: Set result output
         id: result
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_INDEX: ${{ matrix.index }}
           INPUT_VERIFY-COMMANDS: ${{ steps.signing-attestation-manifests.outputs.verify-commands || steps.signing-local-artifacts.outputs.verify-commands }}
@@ -810,7 +810,7 @@ jobs:
     steps:
       -
         name: Install dependencies
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
         with:
@@ -848,7 +848,7 @@ jobs:
         name: Create manifest
         id: manifest
         if: ${{ inputs.output == 'image' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_IMAGE-NAMES: ${{ needs.prepare.outputs.metaImages }}
@@ -937,7 +937,7 @@ jobs:
       -
         name: Set outputs
         id: set
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_BUILD-OUTPUTS: ${{ toJSON(needs.build.outputs) }}
           INPUT_SIGNED: ${{ needs.prepare.outputs.sign }}
