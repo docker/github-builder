@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 9 * * *"
+  push:
+    branches:
+      - 'main'
 
 permissions:
   contents: read
@@ -37,7 +40,15 @@ jobs:
           owner: docker
           repositories: github-builder
       -
+        name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ steps.write-app.outputs.token }}
+          fetch-depth: 0
+          persist-credentials: false
+      -
         name: Update dependency
+        id: update
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_DEP: ${{ matrix.dep }}
@@ -45,7 +56,9 @@ jobs:
           github-token: ${{ steps.write-app.outputs.token }}
           script: |
             const dep = core.getInput('dep');
-            
+            const fs = require('fs');
+            const path = require('path');
+             
             const dependencyConfigs = {
               buildx: {
                 key: 'BUILDX_VERSION',
@@ -99,7 +112,7 @@ jobs:
               },
               sbom: {
                 key: 'SBOM_IMAGE',
-                name: 'SBOM image',
+                name: 'BuildKit Syft Scanner image',
                 branch: 'deps/sbom-image',
                 files: [
                   '.github/workflows/build.yml',
@@ -147,7 +160,7 @@ jobs:
               },
               toolkit: {
                 key: 'DOCKER_ACTIONS_TOOLKIT_MODULE',
-                name: 'docker/actions-toolkit module',
+                name: 'actions-toolkit module',
                 branch: 'deps/docker-actions-toolkit-module',
                 files: [
                   '.github/workflows/build.yml',
@@ -215,20 +228,6 @@ jobs:
               return Buffer.from(data.content, data.encoding).toString('utf8');
             }
 
-            async function getTextFile(github, owner, repo, path, ref) {
-              const response = await github.rest.repos.getContent({
-                owner,
-                repo,
-                path,
-                ref
-              });
-              return {
-                path,
-                sha: response.data.sha,
-                content: decodeContent(response.data)
-              };
-            }
-
             function readEnvValue(content, key) {
               const pattern = new RegExp(`^  ${escapeRegExp(key)}: "([^"]*)"$`, 'm');
               const match = content.match(pattern);
@@ -266,74 +265,25 @@ jobs:
               return `${quoted.slice(0, -1).join(', ')}, and ${quoted.at(-1)}`;
             }
 
-            async function findOpenPullRequest(github, context, branch, base) {
-              const pulls = await github.rest.pulls.list({
-                ...context.repo,
-                state: 'open',
-                head: `${context.repo.owner}:${branch}`,
-                base,
-                per_page: 100
-              });
-              return pulls.data[0] ?? null;
-            }
-
             const config = dependencyConfigs[dep];
             if (!config) {
               core.setFailed(`Unknown dependency ${dep}`);
               return;
             }
 
-            const repo = await github.rest.repos.get(context.repo);
-            const defaultBranch = repo.data.default_branch;
-            const branchRefName = `heads/${config.branch}`;
-            const openPullRequest = await findOpenPullRequest(github, context, config.branch, defaultBranch);
-
             const target = await config.resolve({github});
             core.info(`Resolved ${config.key} to ${target.value} from ${config.sourceUrl}`);
 
-            const baseFiles = await Promise.all(config.files.map((path) => getTextFile(github, context.repo.owner, context.repo.repo, path, defaultBranch)));
-            const baseValues = unique(baseFiles.map((file) => readEnvValue(file.content, config.key)));
-            const baseIsUpToDate = baseValues.every((value) => value === target.value);
-
-            if (baseIsUpToDate) {
-              core.info(`${config.key} is already up to date on ${defaultBranch}`);
-              if (openPullRequest) {
-                await github.rest.pulls.update({
-                  ...context.repo,
-                  pull_number: openPullRequest.number,
-                  state: 'closed'
-                });
-                core.notice(`Closed stale pull request #${openPullRequest.number}`);
-              }
-              return;
-            }
-
-            let branchExists = false;
-            try {
-              await github.rest.git.getRef({
-                ...context.repo,
-                ref: branchRefName
-              });
-              branchExists = true;
-            } catch (error) {
-              if (error.status !== 404) {
-                throw error;
-              }
-            }
-
-            const defaultRef = await github.rest.git.getRef({
-              ...context.repo,
-              ref: `heads/${defaultBranch}`
+            const workingFiles = config.files.map((filePath) => {
+              const absolutePath = path.join(process.env.GITHUB_WORKSPACE, filePath);
+              const content = fs.readFileSync(absolutePath, 'utf8');
+              return {
+                path: filePath,
+                absolutePath,
+                content
+              };
             });
-            const parentCommitSha = defaultRef.data.object.sha;
-
-            // Always rebuild updater branches from the latest default branch head
-            // so stale dependency PRs do not accumulate merge conflicts.
-            const workingRef = defaultBranch;
-            const workingFiles = await Promise.all(
-              config.files.map((path) => getTextFile(github, context.repo.owner, context.repo.repo, path, workingRef))
-            );
-
+            const baseValues = unique(workingFiles.map((file) => readEnvValue(file.content, config.key)));
             const changes = [];
             for (const file of workingFiles) {
               const replacement = replaceEnvValue(file.content, config.key, target.value);
@@ -344,107 +294,41 @@ jobs:
                 path: file.path,
                 before: replacement.before,
                 after: target.value,
-                content: replacement.content
+                content: replacement.content,
+                absolutePath: file.absolutePath
               });
             }
 
             if (changes.length > 0) {
-              const parentCommit = await github.rest.git.getCommit({
-                ...context.repo,
-                commit_sha: parentCommitSha
-              });
-
-              const tree = [];
               for (const change of changes) {
-                const blob = await github.rest.git.createBlob({
-                  ...context.repo,
-                  content: change.content,
-                  encoding: 'utf-8'
-                });
-                tree.push({
-                  path: change.path,
-                  mode: '100644',
-                  type: 'blob',
-                  sha: blob.data.sha
-                });
+                fs.writeFileSync(change.absolutePath, change.content, 'utf8');
               }
-
-              const newTree = await github.rest.git.createTree({
-                ...context.repo,
-                base_tree: parentCommit.data.tree.sha,
-                tree
-              });
-
-              const commit = await github.rest.git.createCommit({
-                ...context.repo,
-                message: `chore(deps): bump ${config.key} to ${target.to}`,
-                tree: newTree.data.sha,
-                parents: [parentCommitSha]
-              });
-
-              if (branchExists) {
-                await github.rest.git.updateRef({
-                  ...context.repo,
-                  ref: branchRefName,
-                  sha: commit.data.sha,
-                  force: true
-                });
-              } else {
-                await github.rest.git.createRef({
-                  ...context.repo,
-                  ref: `refs/${branchRefName}`,
-                  sha: commit.data.sha
-                });
-                branchExists = true;
-              }
+              core.info(`New ${config.name} ${target.value} found`);
             } else {
-              core.info(`No file changes needed on branch ${config.branch}`);
+              core.info(`No workspace changes needed for ${config.key}`);
             }
 
-            const comparison = await github.rest.repos.compareCommits({
-              ...context.repo,
-              base: defaultBranch,
-              head: config.branch
-            });
-
-            if (comparison.data.ahead_by === 0) {
-              core.info(`Branch ${config.branch} does not differ from ${defaultBranch}`);
-              if (openPullRequest) {
-                await github.rest.pulls.update({
-                  ...context.repo,
-                  pull_number: openPullRequest.number,
-                  state: 'closed'
-                });
-                core.notice(`Closed stale pull request #${openPullRequest.number}`);
-              }
-              return;
-            }
-
-            const title = `chore(deps): bump ${config.name} to ${target.to}`;
             const beforeValue = formatList(baseValues);
-            const body = [
-              `This updates ${config.key} from ${beforeValue} to \`${target.value}\`.`,
-              '',
-              `The source of truth for this update is ${config.sourceUrl}.`
-            ].join('\n');
+            const commitMessage = `chore(deps): update ${config.name} to ${target.to}`;
 
-            if (openPullRequest) {
-              await github.rest.pulls.update({
-                ...context.repo,
-                pull_number: openPullRequest.number,
-                title,
-                body
-              });
-              core.notice(`Updated pull request #${openPullRequest.number}`);
-              return;
-            }
+            core.setOutput('branch', config.branch);
+            core.setOutput('commit-message', commitMessage);
+            core.setOutput('key', config.key);
+            core.setOutput('before-value', beforeValue);
+            core.setOutput('target-value', target.value);
+            core.setOutput('source-url', config.sourceUrl);
+      -
+        name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          branch: ${{ steps.update.outputs.branch }}
+          token: ${{ steps.write-app.outputs.token }}
+          commit-message: ${{ steps.update.outputs.commit-message }}
+          title: ${{ steps.update.outputs.commit-message }}
+          signoff: true
+          delete-branch: true
+          body: |
+            This updates ${{ steps.update.outputs.key }} from ${{ steps.update.outputs.before-value }} to `${{ steps.update.outputs.target-value }}`.
 
-            const pullRequest = await github.rest.pulls.create({
-              ...context.repo,
-              title,
-              body,
-              head: config.branch,
-              base: defaultBranch
-            });
-
-            core.notice(`Created pull request #${pullRequest.data.number}`);
+            The source of truth for this update is ${{ steps.update.outputs.source-url }}.
