@@ -162,7 +162,6 @@ env:
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.11.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.89.1"
-  HANDLEBARS_MODULE: "handlebars@4.7.9"
   COSIGN_VERSION: "v3.0.6"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
@@ -380,15 +379,13 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
-          INPUT_HANDLEBARS-MODULE: ${{ env.HANDLEBARS_MODULE }}
         with:
           script: |
             await exec.exec('npm', [
               'install',
               '--prefer-offline',
               '--ignore-scripts',
-              core.getInput('dat-module'),
-              core.getInput('handlebars-module')
+              core.getInput('dat-module')
             ]);
       -
         name: Docker meta
@@ -546,7 +543,7 @@ jobs:
           script: |
             const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
             const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
-            const Handlebars = require('handlebars');
+            const { Util } = require('@docker/actions-toolkit/lib/util');
             
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
@@ -582,7 +579,7 @@ jobs:
               tags: inpMetaTags
             };
 
-            const renderTemplate = value => Handlebars.compile(value, {noEscape: true})({meta});
+            const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 
             const buildContext = await new Build().gitContext({subdir: inpContext});
