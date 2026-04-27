@@ -76,6 +76,10 @@ on:
         type: string
         description: "List of target platforms to build"
         required: false
+      secrets:
+        type: string
+        description: "List of secrets to expose to the build"
+        required: false
       push:
         type: boolean
         description: "Push image to the registry (for image output)"
@@ -89,6 +93,10 @@ on:
       shm-size:
         type: string
         description: "Size of /dev/shm (e.g., 2g)"
+        required: false
+      ssh:
+        type: string
+        description: "List of SSH agent socket or keys to expose to the build"
         required: false
       sign:
         type: string
@@ -132,6 +140,9 @@ on:
         required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
+        required: false
+      ssh-private-key:
+        description: "SSH private key used to populate SSH_AUTH_SOCK for buildx SSH mounts"
         required: false
     outputs:
       meta-json:
@@ -651,6 +662,14 @@ jobs:
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
+        name: Set up ssh-agent
+        if: ${{ inputs.ssh }}
+        shell: bash
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "${{ secrets.ssh-private-key }}" | tr -d '\r' | ssh-add -
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+      -
         name: Build
         id: build
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
@@ -666,8 +685,10 @@ jobs:
           platforms: ${{ steps.prepare.outputs.platform }}
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}
+          secrets: ${{ inputs.secrets }}
           secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
           shm-size: ${{ inputs.shm-size }}
+          ssh: ${{ inputs.ssh }}
           target: ${{ inputs.target }}
           ulimit: ${{ inputs.ulimit }}
         env:
