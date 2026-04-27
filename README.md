@@ -239,6 +239,7 @@ jobs:
 | `output`               | String   |                                | Build output destination (one of [`image`](https://docs.docker.com/build/exporters/image-registry/) or [`local`](https://docs.docker.com/build/exporters/local-tar/)). Unlike the `build-push-action`, it only accepts `image` or `local`. The reusable workflow takes care of setting the `outputs` attribute                        |
 | `platforms`            | List/CSV |                                | List of [target platforms](https://docs.docker.com/engine/reference/commandline/buildx_build/#platform) to build                                                                                                                                                                                                                      |
 | `push`                 | Bool     | `false`                        | [Push](https://docs.docker.com/engine/reference/commandline/buildx_build/#push) image to the registry (for `image` output)                                                                                                                                                                                                            |
+| `registry-login`       | String   | `auto`                         | Login to registry before build (one of `auto`, `true` or `false`). `auto` enables login only when output is `image` and push is `true`                                                                                                                                                                                                |
 | `sbom`                 | Bool     | `false`                        | Generate [SBOM](https://docs.docker.com/build/attestations/sbom/) attestation for the build                                                                                                                                                                                                                                           |
 | `shm-size`             | String   |                                | Size of [`/dev/shm`](https://docs.docker.com/engine/reference/commandline/buildx_build/#shm-size) (e.g., `2g`)                                                                                                                                                                                                                        |
 | `sign`                 | String   | `auto`                         | Sign attestation manifest for `image` output or artifacts for `local` output, can be one of `auto`, `true` or `false`. The `auto` mode will enable signing if `push` is enabled for pushing the `image` or if `artifact-upload` is enabled for uploading the `local` build output as GitHub Artifact                                  |
@@ -249,6 +250,16 @@ jobs:
 | `meta-images`          | List     |                                | [List of images](https://github.com/docker/metadata-action?tab=readme-ov-file#images-input) to use as base name for tags (required for image output)                                                                                                                                                                                  |
 | `meta-tags`            | List     |                                | [List of tags](https://github.com/docker/metadata-action?tab=readme-ov-file#tags-input) as key-value pair attributes                                                                                                                                                                                                                  |
 | `meta-flavor`          | List     |                                | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                                                         |
+
+> [!NOTE]
+> `registry-login: true` forces a pre-build login attempt and will fail if the
+> resolved credentials are empty, for example, on forked pull requests where
+> secrets are not exposed. Gate this input at the caller side if you need
+> fork-safe behavior:
+>
+> ```yaml
+> registry-login: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+> ```
 
 > [!TIP]
 > When `output=image`, following inputs support Handlebars templates rendered
@@ -275,10 +286,10 @@ jobs:
 
 #### Secrets
 
-| Name             | Default               | Description                                                                    |
-|------------------|-----------------------|--------------------------------------------------------------------------------|
-| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
-| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+| Name             | Default               | Description                                                                                                    |
+|------------------|-----------------------|----------------------------------------------------------------------------------------------------------------|
+| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (used for push/signing and optional pre-build login) |
+| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context                                       |
 
 #### Outputs
 
@@ -384,6 +395,7 @@ jobs:
 | `files`                | List   | `{context}/docker-bake.hcl`    | List of bake definition files                                                                                                                                                                                                                                                                                                         |
 | `output`               | String |                                | Build output destination (one of [`image`](https://docs.docker.com/build/exporters/image-registry/) or [`local`](https://docs.docker.com/build/exporters/local-tar/)).                                                                                                                                                                |
 | `push`                 | Bool   | `false`                        | Push image to the registry (for `image` output)                                                                                                                                                                                                                                                                                       |
+| `registry-login`       | String | `auto`                         | Login to registry before build (one of `auto`, `true` or `false`). `auto` enables login only when output is `image` and push is `true`                                                                                                                                                                                                |
 | `sbom`                 | Bool   | `false`                        | Generate [SBOM](https://docs.docker.com/build/attestations/sbom/) attestation for the build                                                                                                                                                                                                                                           |
 | `set`                  | List   |                                | List of [target values to override](https://docs.docker.com/engine/reference/commandline/buildx_bake/#set) (e.g., `targetpattern.key=value`)                                                                                                                                                                                          |
 | `sign`                 | String | `auto`                         | Sign attestation manifest for `image` output or artifacts for `local` output, can be one of `auto`, `true` or `false`. The `auto` mode will enable signing if `push` is enabled for pushing the `image` or if `artifact-upload` is enabled for uploading the `local` build output as GitHub Artifact                                  |
@@ -396,6 +408,16 @@ jobs:
 | `meta-labels`          | List   |                                | [List of custom labels](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                                                                |
 | `meta-annotations`     | List   |                                | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                                                           |
 | `meta-flavor`          | List   |                                | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                                                         |
+
+> [!NOTE]
+> `registry-login: true` forces a pre-build login attempt and will fail if the
+> resolved credentials are empty, for example, on forked pull requests where
+> secrets are not exposed. Gate this input at the caller side if you need
+> fork-safe behavior:
+>
+> ```yaml
+> registry-login: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+> ```
 
 > [!TIP]
 > When `output=image`, the `set` input supports Handlebars templates rendered
@@ -419,10 +441,10 @@ jobs:
 
 #### Secrets
 
-| Name             | Default               | Description                                                                    |
-|------------------|-----------------------|--------------------------------------------------------------------------------|
-| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
-| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+| Name             | Default               | Description                                                                                                    |
+|------------------|-----------------------|----------------------------------------------------------------------------------------------------------------|
+| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (used for push/signing and optional pre-build login) |
+| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context                                       |
 
 #### Outputs
 
