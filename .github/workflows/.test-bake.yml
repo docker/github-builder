@@ -481,6 +481,24 @@ jobs:
       meta-tags: |
         type=raw,value=bake-ghbuilder-${{ github.run_id }}
 
+  bake-set-runner-deprecated:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      runner: amd64
+      context: test
+      output: image
+      push: false
+      set: |
+        *.args.VERSION={{meta.version}}
+      target: hello-cross
+      meta-images: |
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=bake-ghbuilder-${{ github.run_id }}
+
   bake-qemu:
     uses: ./.github/workflows/bake.yml
     permissions:

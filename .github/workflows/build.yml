@@ -281,6 +281,30 @@ jobs:
                 throw new Error('runner input cannot be empty');
               }
               if (lines.length === 1 && !lines[0].includes('=')) {
+                if (lines[0] === 'auto') {
+                  core.warning('The runner input value "auto" is deprecated; use a runner mapping with default=ubuntu-24.04, linux/arm=ubuntu-24.04-arm, and linux/arm64=ubuntu-24.04-arm instead');
+                  return {
+                    defaultRunner: 'ubuntu-24.04',
+                    rules: [
+                      {pattern: 'linux/arm', runner: 'ubuntu-24.04-arm'},
+                      {pattern: 'linux/arm64', runner: 'ubuntu-24.04-arm'}
+                    ]
+                  };
+                }
+                if (lines[0] === 'amd64') {
+                  core.warning('The runner input value "amd64" is deprecated; use runner=ubuntu-24.04 instead');
+                  return {
+                    defaultRunner: 'ubuntu-24.04',
+                    rules: []
+                  };
+                }
+                if (lines[0] === 'arm64') {
+                  core.warning('The runner input value "arm64" is deprecated; use runner=ubuntu-24.04-arm instead');
+                  return {
+                    defaultRunner: 'ubuntu-24.04-arm',
+                    rules: []
+                  };
+                }
                 return {
                   defaultRunner: lines[0],
                   rules: []

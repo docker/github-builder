@@ -529,6 +529,23 @@ jobs:
       meta-tags: |
         type=raw,value=build-${{ github.run_id }}
 
+  build-set-runner-deprecated:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      runner: amd64
+      build-args: |
+        VERSION={{meta.version}}
+      file: test/hello.Dockerfile
+      output: image
+      platforms: linux/amd64,linux/arm64
+      push: false
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=build-${{ github.run_id }}
+
   build-qemu:
     uses: ./.github/workflows/build.yml
     permissions:
