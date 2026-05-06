@@ -129,6 +129,11 @@ on:
         type: string
         description: "Flavor defines a global behavior for meta-tags"
         required: false
+      meta-pr-head-sha:
+        type: boolean
+        description: "Use the PR head SHA on pull_request events instead of GitHub's synthetic merge commit (sets DOCKER_METADATA_PR_HEAD_SHA)"
+        required: false
+        default: false
     secrets:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
@@ -502,6 +507,8 @@ jobs:
         id: meta
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
@@ -940,6 +947,8 @@ jobs:
         id: meta
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}

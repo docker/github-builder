@@ -233,6 +233,7 @@ jobs:
 | `meta-images`          | List     |                                       | [List of images](https://github.com/docker/metadata-action?tab=readme-ov-file#images-input) to use as base name for tags (required for image output)                                                                                                                                                           |
 | `meta-tags`            | List     |                                       | [List of tags](https://github.com/docker/metadata-action?tab=readme-ov-file#tags-input) as key-value pair attributes                                                                                                                                                                                           |
 | `meta-flavor`          | List     |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                                  |
+| `meta-pr-head-sha`     | Bool     | `false`                               | Use the PR head SHA on `pull_request` events instead of GitHub's synthetic merge commit (sets [`DOCKER_METADATA_PR_HEAD_SHA`](https://github.com/docker/metadata-action#environment-variables))                                                                                                                |
 
 ### Secrets
 
@@ -342,6 +343,7 @@ jobs:
 | `meta-labels`          | List   |                                       | [List of custom labels](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                               |
 | `meta-annotations`     | List   |                                       | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                          |
 | `meta-flavor`          | List   |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                        |
+| `meta-pr-head-sha`     | Bool   | `false`                               | Use the PR head SHA on `pull_request` events instead of GitHub's synthetic merge commit (sets [`DOCKER_METADATA_PR_HEAD_SHA`](https://github.com/docker/metadata-action#environment-variables))                                                                                                      |
 
 ### Secrets
 
