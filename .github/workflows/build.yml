@@ -84,6 +84,11 @@ on:
         description: "Push image to the registry (for image output)"
         required: false
         default: false
+      registry-login:
+        type: string
+        description: "Login to registry before build (one of auto, true or false). Auto enables login only when output is image and push is true"
+        required: false
+        default: auto
       sbom:
         type: boolean
         description: "Generate SBOM attestation for the build"
@@ -131,7 +136,7 @@ on:
         required: false
     secrets:
       registry-auths:
-        description: "Raw authentication to registries, defined as YAML objects (for image output)"
+        description: "Raw authentication to registries, defined as YAML objects"
         required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
@@ -189,6 +194,7 @@ jobs:
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
+      registryLogin: ${{ steps.set.outputs.registryLogin }}
     steps:
       -
         name: Install dependencies
@@ -277,6 +283,7 @@ jobs:
           INPUT_OUTPUT: ${{ inputs.output }}
           INPUT_PLATFORMS: ${{ inputs.platforms }}
           INPUT_PUSH: ${{ inputs.push }}
+          INPUT_REGISTRY-LOGIN: ${{ inputs.registry-login }}
           INPUT_SIGN: ${{ inputs.sign }}
         with:
           script: |
@@ -293,6 +300,7 @@ jobs:
             const inpPlatforms = Util.getInputList('platforms');
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
+            const inpRegistryLogin = core.getInput('registry-login');
             const inpSign = core.getInput('sign');
             
             const parseRunnerConfig = value => {
@@ -412,7 +420,13 @@ jobs:
               core.setFailed(`signing attestation manifests requires push to be enabled`);
               return;
             }
-            
+
+            if (!['auto', 'true', 'false'].includes(inpRegistryLogin)) {
+              core.setFailed(`Invalid registry-login input: ${inpRegistryLogin}`);
+              return;
+            }
+            const registryLogin = inpRegistryLogin === 'auto' ? inpOutput === 'image' && inpPush : inpRegistryLogin === 'true';
+
             if (inpDistribute && inpPlatforms.length > inpMatrixSizeLimit) {
               core.setFailed(`Platforms to build exceed matrix size limit of ${inpMatrixSizeLimit}`);
               return;
@@ -457,6 +471,10 @@ jobs:
               const ghaCacheSign = actionsIdTokenSet ? 'true' : 'false';
               core.info(`ghaCacheSign: ${ghaCacheSign}`);
               core.setOutput('ghaCacheSign', ghaCacheSign);
+            });
+            await core.group(`Set registryLogin output`, async () => {
+              core.info(`registryLogin: ${registryLogin}`);
+              core.setOutput('registryLogin', registryLogin);
             });
 
   build:
@@ -812,7 +830,7 @@ jobs:
             }
       -
         name: Login to registry
-        if: ${{ inputs.push && inputs.output == 'image' }}
+        if: ${{ needs.prepare.outputs.registryLogin == 'true' }}
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
