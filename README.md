@@ -19,6 +19,7 @@ ___
 * [Notes](#notes)
   * [Runner mapping](#runner-mapping)
   * [Metadata templates](#metadata-templates)
+  * [Chainguard keyless authentication](#chainguard-keyless-authentication)
 
 ## Overview
 
@@ -233,6 +234,10 @@ jobs:
 | `meta-images`          | List     |                                       | [List of images](https://github.com/docker/metadata-action?tab=readme-ov-file#images-input) to use as base name for tags (required for image output)                                                                                                                                                           |
 | `meta-tags`            | List     |                                       | [List of tags](https://github.com/docker/metadata-action?tab=readme-ov-file#tags-input) as key-value pair attributes                                                                                                                                                                                           |
 | `meta-flavor`          | List     |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                                  |
+| `chainguard-identity` | String | | UIDP of a Chainguard identity to assume via GitHub OIDC for keyless `cgr.dev` authentication. See [Chainguard keyless authentication](#chainguard-keyless-authentication) |
+| `chainguard-registry` | String | `cgr.dev` | Chainguard OCI registry host |
+| `chainguard-apk-host` | String | `apk.cgr.dev` | Hostname for APK-related Chainguard authentication. Passed through to `chainguard-dev/setup-chainctl` |
+| `chainguard-libraries-host` | String | `libraries.cgr.dev` | Hostname for Chainguard Libraries authentication. Passed through to `chainguard-dev/setup-chainctl` |
 
 ### Secrets
 
@@ -342,6 +347,10 @@ jobs:
 | `meta-labels`          | List   |                                       | [List of custom labels](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                               |
 | `meta-annotations`     | List   |                                       | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                          |
 | `meta-flavor`          | List   |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                        |
+| `chainguard-identity` | String | | UIDP of a Chainguard identity to assume via GitHub OIDC for keyless `cgr.dev` authentication. See [Chainguard keyless authentication](#chainguard-keyless-authentication) |
+| `chainguard-registry` | String | `cgr.dev` | Chainguard OCI registry host |
+| `chainguard-apk-host` | String | `apk.cgr.dev` | Hostname for APK-related Chainguard authentication. Passed through to `chainguard-dev/setup-chainctl` |
+| `chainguard-libraries-host` | String | `libraries.cgr.dev` | Hostname for Chainguard Libraries authentication. Passed through to `chainguard-dev/setup-chainctl` |
 
 ### Secrets
 
@@ -431,3 +440,35 @@ jobs:
         *.args.VERSION={{meta.version}}
       meta-images: name/app
 ```
+
+### Chainguard keyless authentication
+
+Setting `chainguard-identity` authenticates to `cgr.dev` via GitHub
+OIDC, avoiding a static credential. The workflow runs
+[`chainguard-dev/setup-chainctl`](https://github.com/chainguard-dev/setup-chainctl)
+inside the `build` and `finalize` jobs so the token is minted on the
+build runner and never crosses the `workflow_call` boundary (see
+[`docker/github-builder#146`](https://github.com/docker/github-builder/issues/146)).
+
+```yaml
+jobs:
+  bake:
+    uses: docker/github-builder/.github/workflows/bake.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      output: image
+      push: true
+      meta-images: cgr.dev/your-org/your-image
+      chainguard-identity: 70e4ec6.../79304d...
+```
+
+`chainguard-identity` can be combined with `registry-auths` for
+multi-registry pushes.
+
+> [!IMPORTANT]
+> `chainguard-dev/setup-chainctl` also authenticates against
+> `apk.cgr.dev` and `libraries.cgr.dev`. The assumed identity must be
+> claim-matched for those audiences, or `chainguard-apk-host` /
+> `chainguard-libraries-host` must be redirected.
