@@ -133,11 +133,6 @@ on:
         type: string
         description: "UIDP of a Chainguard identity to assume via GitHub OIDC for keyless cgr.dev authentication"
         required: false
-      chainguard-registry:
-        type: string
-        description: "Chainguard OCI registry host"
-        required: false
-        default: cgr.dev
       chainguard-apk-host:
         type: string
         description: "Hostname for APK-related Chainguard authentication (passed through to chainguard-dev/setup-chainctl)"
