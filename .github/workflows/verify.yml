@@ -13,7 +13,7 @@ on:
         required: false
 
 env:
-  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.89.1"
+  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.90.0"
 
 jobs:
   verify:
