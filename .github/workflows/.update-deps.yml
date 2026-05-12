@@ -327,6 +327,7 @@ jobs:
           commit-message: ${{ steps.update.outputs.commit-message }}
           title: ${{ steps.update.outputs.commit-message }}
           signoff: true
+          sign-commits: true
           delete-branch: true
           body: |
             This updates ${{ steps.update.outputs.key }} from ${{ steps.update.outputs.before-value }} to `${{ steps.update.outputs.target-value }}`.
