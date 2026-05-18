@@ -703,8 +703,9 @@ jobs:
 
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-
-            const buildContext = await new Build().gitContext({subdir: inpContext});
+            
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
             
             switch (inpOutput) {
