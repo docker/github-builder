@@ -413,8 +413,9 @@ jobs:
               core.setFailed(`signing attestation manifests requires push to be enabled`);
               return;
             }
-
-            const bakeSource = await new Build().gitContext({subdir: inpContext});
+            
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             await core.group(`Set bake source`, async () => {
               core.info(bakeSource);
             });
@@ -810,7 +811,8 @@ jobs:
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             
-            const bakeSource = await new Build().gitContext({subdir: inpContext});
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             await core.group(`Set source output`, async () => {
               core.info(bakeSource);
               core.setOutput('source', bakeSource);
