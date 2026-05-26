@@ -245,16 +245,12 @@ jobs:
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
       -
-        name: Expose GitHub Runtime
-        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
-      -
         name: Set outputs
         id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
-          INPUT_ACTIONS-ID-TOKEN-SET:  ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN != '' && env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
           INPUT_RUNNER: ${{ inputs.runner }}
           INPUT_DISTRIBUTE: ${{ inputs.distribute }}
@@ -279,8 +275,8 @@ jobs:
 
             const inpSbomImage = core.getInput('sbom-image');
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
-            const inpActionsIdTokenSet = core.getBooleanInput('actions-id-token-set');
             const inpMetaImages = core.getMultilineInput('meta-images');
+            const actionsIdTokenSet = !!process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN && !!process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
             
             const inpRunner = core.getMultilineInput('runner');
             const inpDistribute = core.getBooleanInput('distribute');
@@ -542,7 +538,7 @@ jobs:
               core.setOutput('sign', sign);
             });
             await core.group(`Set ghaCacheSign output`, async () => {
-              const ghaCacheSign = inpActionsIdTokenSet ? 'true' : 'false';
+              const ghaCacheSign = actionsIdTokenSet ? 'true' : 'false';
               core.info(`ghaCacheSign: ${ghaCacheSign}`);
               core.setOutput('ghaCacheSign', ghaCacheSign);
             });
@@ -625,8 +621,21 @@ jobs:
           image: ${{ env.BINFMT_IMAGE }}
           cache-image: false
       -
-        name: Expose GitHub Runtime
-        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+        name: Set GitHub runtime outputs
+        id: github-runtime
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const idTokenRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN || '';
+            const idTokenRequestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL || '';
+            if (idTokenRequestToken) {
+              core.setSecret(idTokenRequestToken);
+            }
+            if (idTokenRequestUrl) {
+              core.setSecret(idTokenRequestUrl);
+            }
+            core.setOutput('actions-id-token-request-token', idTokenRequestToken);
+            core.setOutput('actions-id-token-request-url', idTokenRequestUrl);
       -
         name: Set up Docker Buildx
         id: buildx
@@ -637,8 +646,8 @@ jobs:
           buildkitd-flags: --debug
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
-            env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
-            env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+            env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ steps.github-runtime.outputs.actions-id-token-request-token }}
+            env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ steps.github-runtime.outputs.actions-id-token-request-url }}
           buildkitd-config-inline: |
             [cache]
               [cache.gha]
