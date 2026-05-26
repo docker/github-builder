@@ -103,8 +103,9 @@ jobs:
                     owner: 'moby',
                     repo: 'buildkit'
                   });
+                  const image = `moby/buildkit:${release.data.tag_name}`;
                   return {
-                    value: `moby/buildkit:${release.data.tag_name}`,
+                    value: `${image}@${await resolveImageDigest(image)}`,
                     from: release.data.tag_name,
                     to: release.data.tag_name
                   };
@@ -125,10 +126,12 @@ jobs:
                     repo: 'buildkit-syft-scanner'
                   });
                   const tag = release.data.tag_name;
+                  const imageTag = stripLeadingV(tag);
+                  const image = `docker/buildkit-syft-scanner:${imageTag}`;
                   return {
-                    value: `docker/buildkit-syft-scanner:${stripLeadingV(tag)}`,
+                    value: `${image}@${await resolveImageDigest(image)}`,
                     from: tag,
-                    to: stripLeadingV(tag)
+                    to: imageTag
                   };
                 }
               },
@@ -151,8 +154,9 @@ jobs:
                     throw new Error(`Expected deploy/ release tag for tonistiigi/binfmt, got ${tag}`);
                   }
                   const imageTag = `qemu-${tag.slice('deploy/'.length)}`;
+                  const image = `tonistiigi/binfmt:${imageTag}`;
                   return {
-                    value: `tonistiigi/binfmt:${imageTag}`,
+                    value: `${image}@${await resolveImageDigest(image)}`,
                     from: tag,
                     to: imageTag
                   };
@@ -228,6 +232,20 @@ jobs:
               return Buffer.from(data.content, data.encoding).toString('utf8');
             }
 
+            async function resolveImageDigest(image) {
+              const result = await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', image, '--format', '{{json .Manifest}}'], {
+                silent: true
+              });
+              if (result.exitCode !== 0) {
+                throw new Error(`Failed to inspect ${image}: ${result.stderr}`);
+              }
+              const manifest = JSON.parse(result.stdout);
+              if (!manifest.digest) {
+                throw new Error(`Unable to resolve digest for ${image}`);
+              }
+              return manifest.digest;
+            }
+
             function readEnvValue(content, key) {
               const pattern = new RegExp(`^  ${escapeRegExp(key)}: "([^"]*)"$`, 'm');
               const match = content.match(pattern);
@@ -254,6 +272,10 @@ jobs:
               return [...new Set(values)];
             }
 
+            function stripImageDigest(value) {
+              return value.replace(/@sha256:[a-f0-9]{64}$/i, '');
+            }
+
             function formatList(values) {
               if (values.length === 1) {
                 return `\`${values[0]}\``;
@@ -263,6 +285,10 @@ jobs:
               }
               const quoted = values.map((value) => `\`${value}\``);
               return `${quoted.slice(0, -1).join(', ')}, and ${quoted.at(-1)}`;
+            }
+
+            function formatDisplayList(values) {
+              return formatList(values.map(stripImageDigest));
             }
 
             const config = dependencyConfigs[dep];
@@ -308,7 +334,7 @@ jobs:
               core.info(`No workspace changes needed for ${config.key}`);
             }
 
-            const beforeValue = formatList(baseValues);
+            const beforeValue = formatDisplayList(baseValues);
             const commitMessage = `chore(deps): update ${config.name} to ${target.to}`;
 
             core.setOutput('branch', config.branch);
@@ -316,6 +342,7 @@ jobs:
             core.setOutput('key', config.key);
             core.setOutput('before-value', beforeValue);
             core.setOutput('target-value', target.value);
+            core.setOutput('target-label', target.to);
             core.setOutput('source-url', config.sourceUrl);
       -
         name: Create pull request
@@ -330,6 +357,6 @@ jobs:
           sign-commits: true
           delete-branch: true
           body: |
-            This updates ${{ steps.update.outputs.key }} from ${{ steps.update.outputs.before-value }} to `${{ steps.update.outputs.target-value }}`.
+            This updates ${{ steps.update.outputs.key }} from ${{ steps.update.outputs.before-value }} to `${{ steps.update.outputs.target-label }}`.
 
             The source of truth for this update is ${{ steps.update.outputs.source-url }}.

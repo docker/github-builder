@@ -158,9 +158,9 @@ on:
 
 env:
   BUILDX_VERSION: "v0.34.1"
-  BUILDKIT_IMAGE: "moby/buildkit:v0.30.0"
-  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.11.0"
-  BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
+  BUILDKIT_IMAGE: "moby/buildkit:v0.30.0@sha256:0168606be2315b7c807a03b3d8aa79beefdb31c98740cebdffdfeebf31190c9f"
+  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.11.0@sha256:79e7b013cbec16bbb436f312819a49a4a57752b2270c1a9332ae1a10fcc82a68"
+  BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65@sha256:d3b963f787999e6c0219a48dba02978769286ff61a5f4d26245cb6a6e5567ea3"
   DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.90.0"
   COSIGN_VERSION: "v3.0.6"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
