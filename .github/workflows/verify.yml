@@ -78,6 +78,7 @@ jobs:
 
             const cosign = new Cosign();
             await cosign.printVersion();
+            await exec.exec(cosign.binPath, ['initialize']);
       -
         name: Login to registry
         if: ${{ steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' }}
