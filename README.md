@@ -17,6 +17,7 @@ ___
   * [Secrets](#secrets-1)
   * [Outputs](#outputs-1)
 * [Notes](#notes)
+  * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Runner mapping](#runner-mapping)
   * [Metadata templates](#metadata-templates)
 
@@ -48,7 +49,7 @@ jobs:
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read # to fetch the repository content
-      id-token: write # for signing attestation(s) with GitHub OIDC Token
+      id-token: write # for signing attestations and cache entries with GitHub OIDC
     with:
       output: image
       push: ${{ github.event_name != 'pull_request' }}
@@ -79,8 +80,10 @@ toward higher levels of security and trust.
 * **Optimized cache warming & reuse.**  
   The builder can use the GitHub Actions cache backend to persist layers across
   branches, PRs, and rebuilds. This significantly reduces cold-start times and
-  avoids repeating expensive dependency installations, even for external
-  contributors' pull requests.
+  avoids repeating expensive dependency installations. With GitHub OIDC
+  available, cache entries are signed and verified before reuse so warm-cache
+  builds do not accept unauthenticated cache contents as build inputs. See
+  [Signed GitHub Actions cache](#signed-github-actions-cache).
 
 * **Centralized build configuration.**  
   Repositories no longer need to configure buildx drivers, tune storage, or
@@ -117,6 +120,13 @@ toward higher levels of security and trust.
   cannot be altered by user configuration. This protects against tampering:
   preventing untrusted workflow steps from modifying build logic, injecting
   unexpected flags, or producing misleading provenance.
+
+* **Signed cache reuse.**
+  With GitHub OIDC available, all GitHub Actions cache entries produced by these
+  reusable workflows are signed and verified before import. This prevents cache
+  entries produced outside the trusted workflow from being restored while still
+  allowing cache warming and reuse. See
+  [Signed GitHub Actions cache](#signed-github-actions-cache).
 
 ### Isolation & Reliability
 
@@ -172,7 +182,7 @@ jobs:
     uses: docker/github-builder/.github/workflows/build.yml@v1
     permissions:
       contents: read # to fetch the repository content
-      id-token: write # for signing attestation(s) with GitHub OIDC Token
+      id-token: write # for signing attestations and cache entries with GitHub OIDC
     with:
       output: image
       push: ${{ github.event_name != 'pull_request' }}
@@ -287,7 +297,7 @@ jobs:
     uses: docker/github-builder/.github/workflows/bake.yml@v1
     permissions:
       contents: read # to fetch the repository content
-      id-token: write # for signing attestation(s) with GitHub OIDC Token
+      id-token: write # for signing attestations and cache entries with GitHub OIDC
     with:
       output: image
       push: ${{ github.event_name != 'pull_request' }}
@@ -369,6 +379,19 @@ with `builder-outputs: ${{ toJSON(needs.<job_id>.outputs) }}`.
 | `signed`                 | Bool   | Whether attestation manifests or local artifacts were signed                 |
 
 ## Notes
+
+### Signed GitHub Actions cache
+
+When the workflow has GitHub OIDC available through `id-token: write`, BuildKit
+signs cache entries with Cosign and requires restored cache entries to match the
+expected workflow identity and source repository policy before import.
+
+This verification matters because GitHub Actions cache is scoped to a
+repository, but repository writers can still create cache entries. For these
+reusable workflows, the Docker-owned workflow is the trusted build boundary.
+Without verification, a poisoned BuildKit cache could influence a later trusted
+build, which is the SLSA isolation concern described in
+[docker/github-builder#56](https://github.com/docker/github-builder/issues/56).
 
 ### Runner mapping
 

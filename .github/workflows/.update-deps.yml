@@ -28,17 +28,20 @@ jobs:
           - sbom
           - binfmt
           - cosign
-          - toolkit
+          - runtime
     steps:
       -
         name: GitHub auth token from GitHub App
         id: write-app
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.DOCKER_GITHUB_BUILDER_WRITE_CLIENT_ID }}
           private-key: ${{ secrets.DOCKER_GITHUB_BUILDER_WRITE_PRIVATE_KEY }}
           owner: docker
           repositories: github-builder
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
       -
         name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -158,26 +161,29 @@ jobs:
                   };
                 }
               },
-              toolkit: {
-                key: 'DOCKER_ACTIONS_TOOLKIT_MODULE',
-                name: 'actions-toolkit module',
-                branch: 'deps/docker-actions-toolkit-module',
+              runtime: {
+                key: 'RUNTIME_MODULE',
+                name: 'github-builder-runtime module',
+                branch: 'deps/docker-github-builder-runtime-module',
                 files: [
                   '.github/workflows/build.yml',
                   '.github/workflows/bake.yml',
                   '.github/workflows/verify.yml'
                 ],
-                sourceUrl: 'https://github.com/docker/actions-toolkit/releases/latest',
-                async resolve({github}) {
-                  const release = await github.rest.repos.getLatestRelease({
-                    owner: 'docker',
-                    repo: 'actions-toolkit'
-                  });
-                  const tag = release.data.tag_name;
-                  const version = stripLeadingV(tag);
+                sourceUrl: 'https://www.npmjs.com/package/@docker/github-builder-runtime',
+                async resolve() {
+                  const response = await fetch('https://registry.npmjs.org/@docker%2fgithub-builder-runtime/latest');
+                  if (!response.ok) {
+                    throw new Error(`Unable to resolve latest @docker/github-builder-runtime package: ${response.status} ${response.statusText}`);
+                  }
+                  const payload = await response.json();
+                  const version = payload?.version;
+                  if (!version) {
+                    throw new Error('Unable to resolve latest @docker/github-builder-runtime package version from npm');
+                  }
                   return {
-                    value: `@docker/actions-toolkit@${version}`,
-                    from: tag,
+                    value: `@docker/github-builder-runtime@${version}`,
+                    from: version,
                     to: version
                   };
                 }
@@ -327,6 +333,7 @@ jobs:
           commit-message: ${{ steps.update.outputs.commit-message }}
           title: ${{ steps.update.outputs.commit-message }}
           signoff: true
+          sign-commits: true
           delete-branch: true
           body: |
             This updates ${{ steps.update.outputs.key }} from ${{ steps.update.outputs.before-value }} to `${{ steps.update.outputs.target-value }}`.

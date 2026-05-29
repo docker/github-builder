@@ -13,7 +13,17 @@ on:
         required: false
 
 env:
-  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.89.1"
+  RUNTIME_MODULE: "@docker/github-builder-runtime@0.91.0"
+  RUNTIME_INSTALL_ARGS: |
+    --loglevel=error
+    --no-save
+    --package-lock=false
+    --ignore-scripts
+    --omit=dev
+    --prefer-offline
+    --fund=false
+    --audit=false
+  NPM_CONFIG_FETCH_RETRIES: "5"
 
 jobs:
   verify:
@@ -48,14 +58,29 @@ jobs:
             core.setOutput('output-type', outputType);
             core.setOutput('signed', signed);
       -
-        name: Install @docker/actions-toolkit
+        name: Install @docker/github-builder-runtime
         if: ${{ steps.vars.outputs.signed == 'true' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+          INPUT_RUNTIME-MODULE: ${{ env.RUNTIME_MODULE }}
+          INPUT_RUNTIME-INSTALL-ARGS: ${{ env.RUNTIME_INSTALL_ARGS }}
         with:
           script: |
-            await exec.exec('npm', ['install', '--prefer-offline', '--ignore-scripts', core.getInput('dat-module')]);
+            const npmArgs = ['install', ...core.getMultilineInput('runtime-install-args'), core.getInput('runtime-module')];
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const exitCode = await exec.exec('npm', npmArgs, {ignoreReturnCode: true});
+              if (exitCode === 0) {
+                return;
+              }
+              if (attempt === maxAttempts) {
+                core.setFailed(`npm install failed after ${maxAttempts} attempts`);
+                return;
+              }
+              const retryDelayMs = attempt * 50;
+              core.info(`npm install failed with exit code ${exitCode}; retrying in ${retryDelayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
       -
         name: Install Cosign
         if: ${{ steps.vars.outputs.signed == 'true' }}
@@ -64,8 +89,8 @@ jobs:
           INPUT_COSIGN-VERSION: ${{ steps.vars.outputs.cosign-version }}
         with:
           script: |
-            const { Cosign } = require('@docker/actions-toolkit/lib/cosign/cosign');
-            const { Install } = require('@docker/actions-toolkit/lib/cosign/install');
+            const { Cosign } = require('@docker/github-builder-runtime/lib/cosign/cosign');
+            const { Install } = require('@docker/github-builder-runtime/lib/cosign/install');
 
             const cosignInstall = new Install();
             const cosignBinPath = await cosignInstall.download({
@@ -81,7 +106,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' }}
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:

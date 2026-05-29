@@ -165,11 +165,20 @@ on:
         value: ${{ jobs.finalize.outputs.signed }}
 
 env:
-  BUILDX_VERSION: "v0.33.0"
-  BUILDKIT_IMAGE: "moby/buildkit:v0.29.0"
+  BUILDX_VERSION: "v0.34.1"
+  BUILDKIT_IMAGE: "moby/buildkit:v0.30.0"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.11.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.1-65"
-  DOCKER_ACTIONS_TOOLKIT_MODULE: "@docker/actions-toolkit@0.89.1"
+  RUNTIME_MODULE: "@docker/github-builder-runtime@0.91.0"
+  RUNTIME_INSTALL_ARGS: |
+    --loglevel=error
+    --no-save
+    --package-lock=false
+    --ignore-scripts
+    --omit=dev
+    --prefer-offline
+    --fund=false
+    --audit=false
   COSIGN_VERSION: "v3.0.6"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
@@ -190,10 +199,25 @@ jobs:
         name: Install dependencies
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+          INPUT_RUNTIME-MODULE: ${{ env.RUNTIME_MODULE }}
+          INPUT_RUNTIME-INSTALL-ARGS: ${{ env.RUNTIME_INSTALL_ARGS }}
         with:
           script: |
-            await exec.exec('npm', ['install', '--prefer-offline', '--ignore-scripts', core.getInput('dat-module')]);
+            const npmArgs = ['install', ...core.getMultilineInput('runtime-install-args'), core.getInput('runtime-module')];
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const exitCode = await exec.exec('npm', npmArgs, {ignoreReturnCode: true});
+              if (exitCode === 0) {
+                return;
+              }
+              if (attempt === maxAttempts) {
+                core.setFailed(`npm install failed after ${maxAttempts} attempts`);
+                return;
+              }
+              const retryDelayMs = attempt * 50;
+              core.info(`npm install failed with exit code ${exitCode}; retrying in ${retryDelayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
       -
         name: Install Cosign
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -201,8 +225,8 @@ jobs:
           INPUT_COSIGN-VERSION: ${{ env.COSIGN_VERSION }}
         with:
           script: |
-            const { Cosign } = require('@docker/actions-toolkit/lib/cosign/cosign');
-            const { Install } = require('@docker/actions-toolkit/lib/cosign/install');
+            const { Cosign } = require('@docker/github-builder-runtime/lib/cosign/cosign');
+            const { Install } = require('@docker/github-builder-runtime/lib/cosign/install');
 
             const inpCosignVersion = core.getInput('cosign-version');
 
@@ -227,8 +251,8 @@ jobs:
             ${{ env.BINFMT_IMAGE }}
         with:
           script: |
-            const { OCI } = require('@docker/actions-toolkit/lib/oci/oci');
-            const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
+            const { OCI } = require('@docker/github-builder-runtime/lib/oci/oci');
+            const { Sigstore } = require('@docker/github-builder-runtime/lib/sigstore/sigstore');
 
             const sigstore = new Sigstore();
             
@@ -246,15 +270,11 @@ jobs:
               });
             }
       -
-        name: Expose GitHub Runtime
-        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
-      -
         name: Set outputs
         id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
-          INPUT_ACTIONS-ID-TOKEN-SET:  ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN != '' && env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
           INPUT_RUNNER: ${{ inputs.runner }}
           INPUT_DISTRIBUTE: ${{ inputs.distribute }}
@@ -265,12 +285,12 @@ jobs:
           INPUT_SIGN: ${{ inputs.sign }}
         with:
           script: |
-            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
-            const { Util } = require('@docker/actions-toolkit/lib/util');
+            const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { Util } = require('@docker/github-builder-runtime/lib/util');
             
             const inpMatrixSizeLimit = parseInt(core.getInput('matrix-size-limit'), 10);
-            const inpActionsIdTokenSet = core.getBooleanInput('actions-id-token-set');
             const inpMetaImages = core.getMultilineInput('meta-images');
+            const actionsIdTokenSet = !!process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN && !!process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
             
             const inpRunner = core.getMultilineInput('runner');
             const inpDistribute = core.getBooleanInput('distribute');
@@ -439,7 +459,7 @@ jobs:
               core.setOutput('sign', sign);
             });
             await core.group(`Set ghaCacheSign output`, async () => {
-              const ghaCacheSign = inpActionsIdTokenSet ? 'true' : 'false';
+              const ghaCacheSign = actionsIdTokenSet ? 'true' : 'false';
               core.info(`ghaCacheSign: ${ghaCacheSign}`);
               core.setOutput('ghaCacheSign', ghaCacheSign);
             });
@@ -493,20 +513,30 @@ jobs:
         name: Install dependencies
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+          INPUT_RUNTIME-MODULE: ${{ env.RUNTIME_MODULE }}
+          INPUT_RUNTIME-INSTALL-ARGS: ${{ env.RUNTIME_INSTALL_ARGS }}
         with:
           script: |
-            await exec.exec('npm', [
-              'install',
-              '--prefer-offline',
-              '--ignore-scripts',
-              core.getInput('dat-module')
-            ]);
+            const npmArgs = ['install', ...core.getMultilineInput('runtime-install-args'), core.getInput('runtime-module')];
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const exitCode = await exec.exec('npm', npmArgs, {ignoreReturnCode: true});
+              if (exitCode === 0) {
+                return;
+              }
+              if (attempt === maxAttempts) {
+                core.setFailed(`npm install failed after ${maxAttempts} attempts`);
+                return;
+              }
+              const retryDelayMs = attempt * 50;
+              core.info(`npm install failed with exit code ${exitCode}; retrying in ${retryDelayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
       -
         name: Docker meta
         id: meta
         if: ${{ inputs.output == 'image' }}
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         env:
           DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
@@ -517,26 +547,39 @@ jobs:
           annotations: ${{ inputs.meta-annotations }}
       -
         name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
         if: ${{ inputs.setup-qemu }}
         with:
           image: ${{ env.BINFMT_IMAGE }}
           cache-image: false
       -
-        name: Expose GitHub Runtime
-        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
+        name: Set GitHub runtime outputs
+        id: github-runtime
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const idTokenRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN || '';
+            const idTokenRequestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL || '';
+            if (idTokenRequestToken) {
+              core.setSecret(idTokenRequestToken);
+            }
+            if (idTokenRequestUrl) {
+              core.setSecret(idTokenRequestUrl);
+            }
+            core.setOutput('actions-id-token-request-token', idTokenRequestToken);
+            core.setOutput('actions-id-token-request-url', idTokenRequestUrl);
       -
         name: Set up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
         with:
           version: ${{ env.BUILDX_VERSION }}
           cache-binary: false
           buildkitd-flags: --debug
           driver-opts: |
             image=${{ env.BUILDKIT_IMAGE }}
-            env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
-            env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+            env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ steps.github-runtime.outputs.actions-id-token-request-token }}
+            env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ steps.github-runtime.outputs.actions-id-token-request-url }}
           buildkitd-config-inline: |
             [cache]
               [cache.gha]
@@ -601,9 +644,9 @@ jobs:
             const os = require('os');
             const path = require('path');
             
-            const { Buildx } = require('@docker/actions-toolkit/lib/buildx/buildx');
-            const { Cosign } = require('@docker/actions-toolkit/lib/cosign/cosign');
-            const { Install } = require('@docker/actions-toolkit/lib/cosign/install');
+            const { Buildx } = require('@docker/github-builder-runtime/lib/buildx/buildx');
+            const { Cosign } = require('@docker/github-builder-runtime/lib/cosign/cosign');
+            const { Install } = require('@docker/github-builder-runtime/lib/cosign/install');
             
             const inpCosignVersion = core.getInput('cosign-version');
             const inpBuilderName = core.getInput('builder-name');
@@ -670,9 +713,9 @@ jobs:
           INPUT_META-LABELS: ${{ steps.meta.outputs.labels }}
         with:
           script: |
-            const { Build } = require('@docker/actions-toolkit/lib/buildx/build');
-            const { GitHub } = require('@docker/actions-toolkit/lib/github/github');
-            const { Util } = require('@docker/actions-toolkit/lib/util');
+            const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
+            const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { Util } = require('@docker/github-builder-runtime/lib/util');
             
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
@@ -710,8 +753,9 @@ jobs:
 
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-
-            const buildContext = await new Build().gitContext({subdir: inpContext});
+            
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
             
             switch (inpOutput) {
@@ -776,13 +820,13 @@ jobs:
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
         name: Build
         id: build
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           annotations: ${{ steps.prepare.outputs.annotations }}
           build-args: ${{ steps.prepare.outputs.build-args }}
@@ -805,7 +849,7 @@ jobs:
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' }}
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
@@ -820,7 +864,7 @@ jobs:
           INPUT_IMAGE-DIGEST: ${{ steps.build.outputs.digest }}
         with:
           script: |
-            const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
+            const { Sigstore } = require('@docker/github-builder-runtime/lib/sigstore/sigstore');
             
             const inpImageNames = core.getMultilineInput('image-names');
             const inpImageDigest = core.getInput('image-digest');
@@ -856,7 +900,7 @@ jobs:
         with:
           script: |
             const path = require('path');
-            const { Sigstore } = require('@docker/actions-toolkit/lib/sigstore/sigstore');
+            const { Sigstore } = require('@docker/github-builder-runtime/lib/sigstore/sigstore');
             const inplocalExportDir = core.getInput('local-output-dir');
             
             const sigstore = new Sigstore();
@@ -938,15 +982,30 @@ jobs:
         name: Install dependencies
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          INPUT_DAT-MODULE: ${{ env.DOCKER_ACTIONS_TOOLKIT_MODULE }}
+          INPUT_RUNTIME-MODULE: ${{ env.RUNTIME_MODULE }}
+          INPUT_RUNTIME-INSTALL-ARGS: ${{ env.RUNTIME_INSTALL_ARGS }}
         with:
           script: |
-            await exec.exec('npm', ['install', '--prefer-offline', '--ignore-scripts', core.getInput('dat-module')]);
+            const npmArgs = ['install', ...core.getMultilineInput('runtime-install-args'), core.getInput('runtime-module')];
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const exitCode = await exec.exec('npm', npmArgs, {ignoreReturnCode: true});
+              if (exitCode === 0) {
+                return;
+              }
+              if (attempt === maxAttempts) {
+                core.setFailed(`npm install failed after ${maxAttempts} attempts`);
+                return;
+              }
+              const retryDelayMs = attempt * 50;
+              core.info(`npm install failed with exit code ${exitCode}; retrying in ${retryDelayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
       -
         name: Docker meta
         id: meta
         if: ${{ inputs.output == 'image' }}
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         env:
           DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
@@ -958,7 +1017,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
@@ -966,7 +1025,7 @@ jobs:
       -
         name: Set up Docker Buildx
         if: ${{ inputs.push && inputs.output == 'image' }}
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
         with:
           version: ${{ env.BUILDX_VERSION }}
           buildkitd-flags: --debug
@@ -987,7 +1046,7 @@ jobs:
           INPUT_META-ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
         with:
           script: |
-            const { ImageTools } = require('@docker/actions-toolkit/lib/buildx/imagetools');
+            const { ImageTools } = require('@docker/github-builder-runtime/lib/buildx/imagetools');
             
             const inpPush = core.getBooleanInput('push');
             const inpImageNames = core.getMultilineInput('image-names');
