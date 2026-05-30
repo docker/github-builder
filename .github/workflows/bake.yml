@@ -126,6 +126,15 @@ on:
         type: string
         description: "Bake target name for metadata (defaults to docker-metadata-action)"
         required: false
+      aws-role-to-assume:
+        type: string
+        description: "IAM role ARN to assume via OIDC for ECR/ECR Public authentication. When set, configure-aws-credentials runs before registry login."
+        required: false
+      aws-region:
+        type: string
+        description: "AWS region for configure-aws-credentials (defaults to us-east-1 for ECR Public)"
+        required: false
+        default: us-east-1
     secrets:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
@@ -953,6 +962,14 @@ jobs:
               core.setOutput('overrides', bakeOverrides.join(os.EOL));
             });
       -
+        name: Configure AWS credentials
+        if: ${{ inputs.aws-role-to-assume != '' }}
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+          role-session-name: gha-github-builder-${{ github.run_id }}-${{ github.run_attempt }}
+      -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
@@ -1151,6 +1168,14 @@ jobs:
           labels: ${{ inputs.meta-labels }}
           annotations: ${{ inputs.meta-annotations }}
           bake-target: ${{ inputs.meta-bake-target }}
+      -
+        name: Configure AWS credentials
+        if: ${{ inputs.aws-role-to-assume != '' }}
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+          role-session-name: gha-github-builder-${{ github.run_id }}-${{ github.run_attempt }}
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}

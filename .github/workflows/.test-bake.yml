@@ -45,24 +45,25 @@ jobs:
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
         type=raw,value=bake-ghbuilder-single-${{ github.run_id }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-single-verify:
     uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - bake-aws-single
     with:
       builder-outputs: ${{ toJSON(needs.bake-aws-single.outputs) }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-single-outputs:
     runs-on: ubuntu-24.04
@@ -102,24 +103,25 @@ jobs:
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
         type=raw,value=bake-ghbuilder-${{ github.run_id }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-verify:
     uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - bake-aws
     with:
       builder-outputs: ${{ toJSON(needs.bake-aws.outputs) }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-outputs:
     runs-on: ubuntu-24.04
@@ -141,14 +143,22 @@ jobs:
     if: ${{ github.event_name != 'pull_request' }}
     needs:
       - bake-aws
+    permissions:
+      contents: read
+      id-token: write
     steps:
+      -
+        name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
+          aws-region: us-east-1
+          role-session-name: gha-github-builder-scan-${{ github.run_id }}-${{ github.run_attempt }}
       -
         name: Login to registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       -
         name: Scan for vulnerabilities
         uses: crazy-max/ghaction-container-scan@a0a3900b79d158c85ccf034e5368fae620a9233a # v4.0.0
@@ -175,24 +185,25 @@ jobs:
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
         type=raw,value=bake-ghbuilder-nosign-${{ github.run_id }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-nosign-verify:
     uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - bake-aws-nosign
     with:
       builder-outputs: ${{ toJSON(needs.bake-aws-nosign.outputs) }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-aws-nosign-outputs:
     runs-on: ubuntu-24.04
@@ -279,30 +290,31 @@ jobs:
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
         type=raw,value=${{ github.run_id }},prefix=bake-ghcr-and-aws-
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-ghcr-and-aws-verify:
     uses: ./.github/workflows/verify.yml
     if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
     needs:
       - bake-ghcr-and-aws
     with:
       builder-outputs: ${{ toJSON(needs.bake-ghcr-and-aws.outputs) }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-ghcr-and-aws-outputs:
     runs-on: ubuntu-24.04
@@ -532,11 +544,10 @@ jobs:
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
         type=raw,value=bake-ghbuilder-nodistrib-${{ github.run_id }}
+      aws-role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
     secrets:
       registry-auths: |
         - registry: public.ecr.aws
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   bake-local-nodistrib:
     uses: ./.github/workflows/bake.yml

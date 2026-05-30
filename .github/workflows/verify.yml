@@ -7,6 +7,15 @@ on:
         type: string
         description: "JSON build outputs from Docker GitHub Builder reusable workflows"
         required: true
+      aws-role-to-assume:
+        type: string
+        description: "IAM role ARN to assume via OIDC for ECR/ECR Public authentication during signing verification"
+        required: false
+      aws-region:
+        type: string
+        description: "AWS region for configure-aws-credentials (defaults to us-east-1 for ECR Public)"
+        required: false
+        default: us-east-1
     secrets:
       registry-auths:
         description: "Registry authentication details as YAML objects"
@@ -103,6 +112,14 @@ jobs:
 
             const cosign = new Cosign();
             await cosign.printVersion();
+      -
+        name: Configure AWS credentials
+        if: ${{ inputs.aws-role-to-assume != '' && steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' }}
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+          role-session-name: gha-github-builder-verify-${{ github.run_id }}-${{ github.run_attempt }}
       -
         name: Login to registry
         if: ${{ steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' }}
