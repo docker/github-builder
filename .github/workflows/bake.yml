@@ -435,7 +435,7 @@ jobs:
               return;
             }
             
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             await core.group(`Set bake source`, async () => {
               core.info(bakeSource);
@@ -855,7 +855,7 @@ jobs:
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             await core.group(`Set source output`, async () => {
               core.info(bakeSource);
