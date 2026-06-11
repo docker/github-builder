@@ -748,7 +748,7 @@ jobs:
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
             
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {} : {'fetch-by-commit': 'true'};
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
             
