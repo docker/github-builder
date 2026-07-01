@@ -136,6 +136,15 @@ on:
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
+      build-secrets:
+        description: List of secrets to expose to the build (e.g., key=string, SSH_AUTH_KEY=mykey)
+        required: false
+      build-secret-envs:
+        description: List of secret env vars to expose to the build (e.g., key=envname, MY_SECRET=MY_ENV_VAR)
+        required: false
+      build-secret-files:
+        description: List of secret files to expose to the build (e.g., key=filename, MY_SECRET=./secret.txt)
+        required: false
     outputs:
       meta-json:
         description: "Metadata JSON output (for image output)"
@@ -833,7 +842,11 @@ jobs:
           platforms: ${{ steps.prepare.outputs.platform }}
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}
-          secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
+          secrets: ${{ secrets.build-secrets }}
+          secret-envs: |
+            GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
+            ${{ secrets.build-secret-envs }}
+          secret-files: ${{ secrets.build-secret-files }}
           shm-size: ${{ inputs.shm-size }}
           target: ${{ inputs.target }}
           ulimit: ${{ inputs.ulimit }}

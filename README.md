@@ -246,10 +246,13 @@ jobs:
 
 ### Secrets
 
-| Name             | Default               | Description                                                                    |
-|------------------|-----------------------|--------------------------------------------------------------------------------|
-| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
-| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+| Name                 | Default               | Description                                                                                                                                              |
+|----------------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `registry-auths`     |                       | Raw authentication to registries, defined as YAML objects (for `image` output)                                                                           |
+| `github-token`       | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context                                                                                 |
+| `build-secrets`      | List                  | List of [secrets](https://docs.docker.com/build/ci/github-actions/secrets/) to expose to the build (e.g., `key=string`, `SSH_AUTH_KEY=mykey`)            |
+| `build-secret-envs`  | List/CSV              | List of [secret env vars](https://docs.docker.com/build/ci/github-actions/secrets/) to expose to the build (e.g., `key=envname`, `MY_SECRET=MY_ENV_VAR`) |
+| `build-secret-files` | List                  | List of [secret files](https://docs.docker.com/build/ci/github-actions/secrets/) to expose to the build (e.g., `key=filename`, `MY_SECRET=./secret.txt`) |
 
 ### Outputs
 
