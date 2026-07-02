@@ -144,7 +144,7 @@ jobs:
     steps:
       -
         name: Scan for vulnerabilities
-        uses: crazy-max/ghaction-container-scan@a0a3900b79d158c85ccf034e5368fae620a9233a # v4.0.0
+        uses: crazy-max/ghaction-container-scan@ffcba8deb5cb3531954cbedbbcd0179d79edf510 # v4.1.0
         with:
           image: docker.io/dockereng/github-builder-test@${{ needs.bake-dockerhub.outputs.digest }}
 
