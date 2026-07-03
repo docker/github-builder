@@ -16,12 +16,14 @@ on:
     paths:
       - '.github/workflows/.test-bake.yml'
       - '.github/workflows/bake.yml'
+      - '.github/workflows/setup-registry-identities.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
   pull_request:
     paths:
       - '.github/workflows/.test-bake.yml'
       - '.github/workflows/bake.yml'
+      - '.github/workflows/setup-registry-identities.yml'
       - '.github/workflows/verify.yml'
       - 'test/**'
 
@@ -79,6 +81,54 @@ jobs:
           script: |
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
+
+  bake-ecr-public:
+    uses: ./.github/workflows/bake.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      context: test
+      output: image
+      push: true
+      sbom: true
+      set: |
+        *.args.VERSION={{meta.version}}
+      target: hello
+      registry-identities: |
+        - type: aws-ecr
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
+          registry: public.ecr.aws
+      meta-images: |
+        public.ecr.aws/q3b5f1u4/test-docker-action
+      meta-tags: |
+        type=raw,value=bake-ecr-public-${{ github.run_id }}
+
+  bake-ecr-private:
+    uses: ./.github/workflows/bake.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      context: test
+      output: image
+      push: true
+      sbom: true
+      set: |
+        *.args.VERSION={{meta.version}}
+      target: hello
+      registry-identities: |
+        - type: aws-ecr
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
+          registry: 175142243308.dkr.ecr.us-east-2.amazonaws.com
+      meta-images: |
+        175142243308.dkr.ecr.us-east-2.amazonaws.com/sandbox/test-docker-action
+      meta-tags: |
+        type=raw,value=bake-ecr-private-${{ github.run_id }}
 
   bake-dockerhub:
     uses: ./.github/workflows/bake.yml
