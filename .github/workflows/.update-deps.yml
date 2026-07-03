@@ -168,6 +168,7 @@ jobs:
                 files: [
                   '.github/workflows/build.yml',
                   '.github/workflows/bake.yml',
+                  '.github/workflows/setup-registry-identities.yml',
                   '.github/workflows/verify.yml'
                 ],
                 sourceUrl: 'https://www.npmjs.com/package/@docker/github-builder-runtime',

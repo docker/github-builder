@@ -1,0 +1,173 @@
+name: registry-identities
+
+on:
+  workflow_call:
+    inputs:
+      registry-identities:
+        type: string
+        description: "Keyless registry identity configuration as YAML objects"
+        required: false
+    outputs:
+      aws-ecr-enabled:
+        description: "Whether an AWS ECR registry identity was configured"
+        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-enabled }}
+      aws-ecr-role-to-assume:
+        description: "AWS IAM role ARN to assume for ECR authentication"
+        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-role-to-assume }}
+      aws-ecr-region:
+        description: "AWS region to use for ECR authentication"
+        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-region }}
+      aws-ecr-registry-auth:
+        description: "Registry auth YAML for Docker login"
+        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-registry-auth }}
+
+env:
+  RUNTIME_MODULE: "@docker/github-builder-runtime@0.92.0"
+  RUNTIME_INSTALL_ARGS: |
+    --loglevel=error
+    --no-save
+    --package-lock=false
+    --ignore-scripts
+    --omit=dev
+    --prefer-offline
+    --fund=false
+    --audit=false
+  NPM_CONFIG_FETCH_RETRIES: "5"
+
+jobs:
+  setup-registry-identities:
+    runs-on: ubuntu-24.04
+    outputs:
+      aws-ecr-enabled: ${{ steps.validate.outputs.aws-ecr-enabled }}
+      aws-ecr-role-to-assume: ${{ steps.validate.outputs.aws-ecr-role-to-assume }}
+      aws-ecr-region: ${{ steps.validate.outputs.aws-ecr-region }}
+      aws-ecr-registry-auth: ${{ steps.validate.outputs.aws-ecr-registry-auth }}
+    steps:
+      -
+        name: Install dependencies
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_RUNTIME-MODULE: ${{ env.RUNTIME_MODULE }}
+          INPUT_RUNTIME-INSTALL-ARGS: ${{ env.RUNTIME_INSTALL_ARGS }}
+          INPUT_REGISTRY-IDENTITIES: ${{ inputs.registry-identities }}
+        with:
+          script: |
+            const registryIdentities = core.getInput('registry-identities', {trimWhitespace: false});
+            if (!registryIdentities.trim()) {
+              core.info('No registry identities configured; skipping npm install');
+              return;
+            }
+
+            const npmArgs = ['install', ...core.getMultilineInput('runtime-install-args'), core.getInput('runtime-module')];
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              const exitCode = await exec.exec('npm', npmArgs, {ignoreReturnCode: true});
+              if (exitCode === 0) {
+                return;
+              }
+              if (attempt === maxAttempts) {
+                core.setFailed(`npm install failed after ${maxAttempts} attempts`);
+                return;
+              }
+              const retryDelayMs = attempt * 50;
+              core.info(`npm install failed with exit code ${exitCode}; retrying in ${retryDelayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            }
+      -
+        name: Validate registry identities
+        id: validate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_REGISTRY-IDENTITIES: ${{ inputs.registry-identities }}
+        with:
+          script: |
+            const setEmptyOutputs = () => {
+              core.setOutput('aws-ecr-enabled', 'false');
+              core.setOutput('aws-ecr-role-to-assume', '');
+              core.setOutput('aws-ecr-region', '');
+              core.setOutput('aws-ecr-registry-auth', '');
+            };
+
+            const registryIdentities = core.getInput('registry-identities', {trimWhitespace: false});
+            if (!registryIdentities.trim()) {
+              core.info('No registry identities configured; skipping validation');
+              setEmptyOutputs();
+              return;
+            }
+
+            let yaml;
+            try {
+              yaml = require('js-yaml');
+            } catch {
+              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
+            }
+
+            const fail = message => {
+              throw new Error(`Invalid registry-identities input: ${message}`);
+            };
+            const ensureObject = (value, path) => {
+              if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                fail(`${path} must be an object`);
+              }
+            };
+            const requireString = (entry, key, path) => {
+              const value = entry[key];
+              if (typeof value !== 'string' || !value.trim()) {
+                fail(`${path}.${key} must be a non-empty string`);
+              }
+              return value.trim();
+            };
+            let parsed;
+            try {
+              parsed = yaml.load(registryIdentities);
+            } catch (error) {
+              fail(error.message);
+            }
+            if (parsed === null || parsed === undefined) {
+              setEmptyOutputs();
+              return;
+            }
+
+            const entries = Array.isArray(parsed) ? parsed : [parsed];
+            if (entries.length === 0) {
+              setEmptyOutputs();
+              return;
+            }
+
+            let awsEcr;
+            entries.forEach((entry, index) => {
+              const path = `registry-identities[${index}]`;
+              ensureObject(entry, path);
+              const type = requireString(entry, 'type', path);
+              switch (type) {
+                case 'aws-ecr': {
+                  const allowedKeys = new Set(['type', 'aws-region', 'role-to-assume', 'registry']);
+                  for (const key of Object.keys(entry)) {
+                    if (!allowedKeys.has(key)) {
+                      fail(`${path}.${key} is not supported for aws-ecr`);
+                    }
+                  }
+                  if (awsEcr) {
+                    fail('only one aws-ecr registry identity is supported');
+                  }
+                  const awsRegion = requireString(entry, 'aws-region', path);
+                  const roleToAssume = requireString(entry, 'role-to-assume', path);
+                  const registry = requireString(entry, 'registry', path);
+                  awsEcr = {
+                    awsRegion,
+                    roleToAssume,
+                    registryAuth: yaml.dump([{
+                      registry
+                    }], {lineWidth: -1})
+                  };
+                  break;
+                }
+                default:
+                  fail(`${path}.type has unsupported provider ${type}`);
+              }
+            });
+
+            core.setOutput('aws-ecr-enabled', awsEcr ? 'true' : 'false');
+            core.setOutput('aws-ecr-role-to-assume', awsEcr?.roleToAssume || '');
+            core.setOutput('aws-ecr-region', awsEcr?.awsRegion || '');
+            core.setOutput('aws-ecr-registry-auth', awsEcr?.registryAuth || '');

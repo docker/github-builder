@@ -6,8 +6,5 @@ rules:
     ignore:
       - bake.yml
       - build.yml
+      - setup-registry-identities.yml
       - verify.yml
-
-  # FIXME: remove this rule when zizmor 1.24.0 is released, fixing the right persona attached to this rule: https://github.com/zizmorcore/zizmor/pull/1783
-  secrets-outside-env:
-    disable: true
