@@ -122,6 +122,11 @@ on:
         type: string
         description: "List of custom annotations"
         required: false
+      meta-pr-head-sha:
+        type: boolean
+        description: "Use the PR head SHA on pull_request events instead of GitHub's synthetic merge commit (sets DOCKER_METADATA_PR_HEAD_SHA)"
+        required: false
+        default: false
       meta-bake-target:
         type: string
         description: "Bake target name for metadata (defaults to docker-metadata-action)"
@@ -641,6 +646,8 @@ jobs:
         id: meta
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
@@ -1145,6 +1152,8 @@ jobs:
         id: meta
         if: ${{ inputs.output == 'image' }}
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: ${{ inputs.meta-pr-head-sha }}
         with:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
