@@ -32,6 +32,7 @@ jobs:
       contents: read
       id-token: write
     with:
+      job-name-prefix: build-dockerhub-single
       build-args: |
         VERSION={{meta.version}}
       cache: true

@@ -32,6 +32,7 @@ jobs:
       contents: read
       id-token: write
     with:
+      job-name-prefix: bake-dockerhub-single
       cache: true
       cache-scope: bake-dockerhub-single
       context: test

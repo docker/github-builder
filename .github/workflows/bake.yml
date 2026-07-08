@@ -21,6 +21,10 @@ on:
         description: "Whether to cancel all in-progress and queued jobs in the matrix if any job fails"
         required: false
         default: false
+      job-name-prefix:
+        type: string
+        description: "Prefix to include in reusable workflow job matrix names in the GitHub Actions UI"
+        required: false
       setup-qemu:
         type: boolean
         description: "Runs the setup-qemu-action step to install QEMU static binaries"
@@ -181,6 +185,10 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - name: ${{ inputs.job-name-prefix }}
     outputs:
       includes: ${{ steps.set.outputs.includes }}
       metaImages: ${{ steps.set.outputs.metaImages }}
@@ -280,6 +288,7 @@ jobs:
           INPUT_RUNNER: ${{ inputs.runner }}
           INPUT_DISTRIBUTE: ${{ inputs.distribute }}
           INPUT_ARTIFACT-UPLOAD: ${{ inputs.artifact-upload }}
+          INPUT_JOB-NAME-PREFIX: ${{ inputs.job-name-prefix }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_FILES: ${{ inputs.files }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -306,6 +315,7 @@ jobs:
             const inpRunner = core.getMultilineInput('runner');
             const inpDistribute = core.getBooleanInput('distribute');
             const inpArtifactUpload = core.getBooleanInput('artifact-upload');
+            const inpJobNamePrefix = core.getInput('job-name-prefix');
             const inpContext = core.getInput('context');
             const inpVars = Util.getInputList('vars');
             const inpFiles = Util.getInputList('files');
@@ -540,19 +550,25 @@ jobs:
             });
             
             await core.group(`Set includes output`, async () => {
+              const withJobNamePrefix = include => {
+                if (inpJobNamePrefix) {
+                  return {name: inpJobNamePrefix, ...include};
+                }
+                return include;
+              };
               let includes = [];
               if (!inpDistribute || platforms.length === 0) {
-                includes.push({
+                includes.push(withJobNamePrefix({
                   index: 0,
                   runner: resolveRunner(runnerConfig)
-                });
+                }));
               } else {
                 platforms.forEach((platform, index) => {
-                  includes.push({
+                  includes.push(withJobNamePrefix({
                     index: index,
                     platform: platform,
                     runner: resolveRunner(runnerConfig, platform)
-                  });
+                  }));
                 });
               }
               core.info(JSON.stringify(includes, null, 2));
@@ -1105,6 +1121,10 @@ jobs:
 
   finalize:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - name: ${{ inputs.job-name-prefix }}
     outputs:
       meta-json: ${{ steps.meta.outputs.json }}
       cosign-version: ${{ env.COSIGN_VERSION }}
