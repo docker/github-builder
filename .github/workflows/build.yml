@@ -133,6 +133,20 @@ on:
         type: string
         description: "Flavor defines a global behavior for meta-tags"
         required: false
+      chainguard-identity:
+        type: string
+        description: "UIDP of a Chainguard identity to assume via GitHub OIDC for keyless cgr.dev authentication"
+        required: false
+      chainguard-apk-host:
+        type: string
+        description: "Hostname for APK-related Chainguard authentication (passed through to chainguard-dev/setup-chainctl)"
+        required: false
+        default: apk.cgr.dev
+      chainguard-libraries-host:
+        type: string
+        description: "Hostname for Chainguard Libraries authentication (passed through to chainguard-dev/setup-chainctl)"
+        required: false
+        default: libraries.cgr.dev
     secrets:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
@@ -828,6 +842,14 @@ jobs:
               core.setOutput('provenance', Build.resolveProvenanceAttrs(`mode=max,version=v1`));
             }
       -
+        name: Set up chainctl
+        if: ${{ inputs.chainguard-identity != '' && inputs.push && inputs.output == 'image' }}
+        uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
+        with:
+          identity: ${{ inputs.chainguard-identity }}
+          apk-host: ${{ inputs.chainguard-apk-host }}
+          libraries-host: ${{ inputs.chainguard-libraries-host }}
+      -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
@@ -1026,6 +1048,14 @@ jobs:
           flavor: ${{ inputs.meta-flavor }}
           labels: ${{ inputs.meta-labels }}
           annotations: ${{ inputs.meta-annotations }}
+      -
+        name: Set up chainctl
+        if: ${{ inputs.chainguard-identity != '' && inputs.push && inputs.output == 'image' }}
+        uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
+        with:
+          identity: ${{ inputs.chainguard-identity }}
+          apk-host: ${{ inputs.chainguard-apk-host }}
+          libraries-host: ${{ inputs.chainguard-libraries-host }}
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' }}
