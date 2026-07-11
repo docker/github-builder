@@ -40,6 +40,11 @@ on:
         description: "Upload build output GitHub artifact (for local output)"
         required: false
         default: false
+      artifact-retention-days:
+        type: number
+        description: "Duration after which artifact will expire in days. 0 means using default retention."
+        required: false
+        default: 0
       cache:
         type: boolean
         description: "Enable cache to GitHub Actions cache backend"
@@ -1089,6 +1094,7 @@ jobs:
           name: ${{ inputs.artifact-name }}${{ steps.prepare.outputs.platform-pair-suffix || '0' }}
           path: ${{ env.LOCAL_EXPORT_DIR }}
           if-no-files-found: error
+          retention-days: ${{ inputs.artifact-retention-days }}
       -
         name: Set result output
         id: result
@@ -1277,6 +1283,7 @@ jobs:
           name: ${{ inputs.artifact-name }}
           pattern: ${{ inputs.artifact-name }}*
           delete-merged: true
+          retention-days: ${{ inputs.artifact-retention-days }}
       -
         name: Set outputs
         id: set

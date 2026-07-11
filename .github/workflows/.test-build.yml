@@ -320,6 +320,7 @@ jobs:
     with:
       artifact-name: build-output
       artifact-upload: true
+      artifact-retention-days: 1
       file: test/hello.Dockerfile
       output: local
       platforms: linux/amd64,linux/arm64

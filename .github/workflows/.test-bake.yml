@@ -270,6 +270,7 @@ jobs:
     with:
       artifact-name: bake-output
       artifact-upload: true
+      artifact-retention-days: 1
       context: test
       output: local
       sbom: true
