@@ -266,17 +266,17 @@ jobs:
             const sigstore = new Sigstore();
             
             for (const image of core.getMultilineInput('images')) {
-              await core.group(`Verifying ${image}`, async () => {
-                try {
+              try {
+                await core.group(`Verifying ${image}`, async () => {
                   await sigstore.verifyImageAttestations(image, {
                     certificateIdentityRegexp: `^https://github.com/docker/github-builder(-experimental)?/.github/workflows/bake.yml.*$`,
                     platform: OCI.defaultPlatform()
                   });
-                } catch (error) {
-                  core.setFailed(error);
-                  return;
-                }
-              });
+                });
+              } catch (error) {
+                core.setFailed(`Failed to verify ${image}: ${error.message || error}`);
+                return;
+              }
             }
       -
         name: Set outputs
