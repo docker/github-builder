@@ -134,6 +134,10 @@ on:
         type: string
         description: "List of tags as key-value pair attributes"
         required: false
+      meta-labels:
+        type: string
+        description: "List of labels as key-value pair attributes"
+        required: false
       meta-flavor:
         type: string
         description: "Flavor defines a global behavior for meta-tags"
