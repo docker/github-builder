@@ -578,9 +578,12 @@ jobs:
         *.args.VERSION={{meta.version}}
       target: hello-cross
       set-meta-annotations: true
+      set-meta-labels: true
       meta-images: ghcr.io/docker/github-builder-test
       meta-tags: |
         type=raw,value=bake-index-annotations-${{ github.run_id }}
+      meta-labels: |
+        io.github.docker.github-builder.test-label=bake-${{ github.run_id }}
       meta-annotations: |
         io.github.docker.github-builder.test-index-annotation=bake-${{ github.run_id }}
     secrets:

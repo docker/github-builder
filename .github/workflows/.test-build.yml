@@ -344,7 +344,7 @@ jobs:
         name: Builder outputs
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.local.outputs) }}
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-local.outputs) }}
         with:
           script: |
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
@@ -590,6 +590,8 @@ jobs:
     with:
       annotations: |
         io.github.docker.github-builder.test-index-annotation=build-${{ github.run_id }}
+      labels: |
+        io.github.docker.github-builder.test-label=build-${{ github.run_id }}
       build-args: |
         VERSION={{meta.version}}
       file: test/hello.Dockerfile
@@ -598,6 +600,7 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
       sbom: true
       set-meta-annotations: true
+      set-meta-labels: true
       meta-images: ghcr.io/docker/github-builder-test
       meta-tags: |
         type=raw,value=build-index-annotations-${{ github.run_id }}
