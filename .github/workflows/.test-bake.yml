@@ -98,9 +98,9 @@ jobs:
       target: hello
       registry-identities: |
         - type: aws-ecr
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
           registry: public.ecr.aws
+          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
+          region: us-east-1
       meta-images: |
         public.ecr.aws/q3b5f1u4/test-docker-action
       meta-tags: |
@@ -122,9 +122,9 @@ jobs:
       target: hello
       registry-identities: |
         - type: aws-ecr
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
           registry: 175142243308.dkr.ecr.us-east-2.amazonaws.com
+          role-to-assume: arn:aws:iam::175142243308:role/official_gha_cicd
+          region: us-east-1
       meta-images: |
         175142243308.dkr.ecr.us-east-2.amazonaws.com/sandbox/test-docker-action
       meta-tags: |
