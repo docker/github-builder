@@ -154,6 +154,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs to secret values"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -732,6 +735,7 @@ jobs:
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
           INPUT_LABELS: ${{ inputs.labels }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -746,12 +750,20 @@ jobs:
           INPUT_META-ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
           INPUT_SET-META-LABELS: ${{ inputs.set-meta-labels }}
           INPUT_META-LABELS: ${{ steps.meta.outputs.labels }}
+          INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
         with:
           script: |
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
+
+            let yaml;
+            try {
+              yaml = require('js-yaml');
+            } catch {
+              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
+            }
+
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -765,6 +777,7 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets');
             const inpContext = core.getInput('context');
             const inpLabels = core.getInput('labels');
             const inpOutput = core.getInput('output');
@@ -780,6 +793,7 @@ jobs:
             const inpMetaAnnotations = core.getMultilineInput('meta-annotations');
             const inpSetMetaLabels = core.getBooleanInput('set-meta-labels');
             const inpMetaLabels = core.getMultilineInput('meta-labels');
+            const inpGitHubToken = core.getInput('github-token');
             
             const meta = {
               version: inpMetaVersion,
@@ -788,6 +802,44 @@ jobs:
 
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            const parseBuildSecrets = value => {
+              const normalized = value.trim();
+              if (!normalized) {
+                return {};
+              }
+              let parsed;
+              try {
+                parsed = yaml.load(normalized, {schema: yaml.FAILSAFE_SCHEMA});
+              } catch (err) {
+                const location = err.mark ? ` at line ${err.mark.line + 1}, column ${err.mark.column + 1}` : '';
+                throw new Error(`Failed to parse build-secrets YAML${location}`);
+              }
+              if (!parsed) {
+                return {};
+              }
+              if (Array.isArray(parsed) || typeof parsed !== 'object') {
+                throw new Error('build-secrets must be a YAML object');
+              }
+              const secrets = {};
+              for (const [id, secret] of Object.entries(parsed)) {
+                if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+                  throw new Error(`Invalid build secret id "${id}": use letters, digits, underscores or dashes`);
+                }
+                if (id === 'GIT_AUTH_TOKEN') {
+                  throw new Error('Build secret id "GIT_AUTH_TOKEN" is reserved for Git context authentication');
+                }
+                if (typeof secret !== 'string') {
+                  throw new Error(`build-secrets value for "${id}" must be a string`);
+                }
+                if (secret.length === 0) {
+                  throw new Error(`build-secrets value for "${id}" must not be empty`);
+                }
+                core.setSecret(secret);
+                secrets[id] = secret;
+              }
+              return secrets;
+            };
+            const toBuildSecretEnvName = (id, index) => `BUILD_SECRET_${index}_${id.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
             
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
@@ -844,6 +896,28 @@ jobs:
             }
             core.setOutput('labels', labels.join('\n'));
             core.setOutput('build-args', buildArgs);
+
+            let buildSecrets;
+            try {
+              buildSecrets = parseBuildSecrets(inpBuildSecrets);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+            const envs = {
+              BUILDKIT_MULTI_PLATFORM: '1',
+              GIT_AUTH_TOKEN: inpGitHubToken
+            };
+            const secretEnvs = ['GIT_AUTH_TOKEN=GIT_AUTH_TOKEN'];
+            Object.entries(buildSecrets).forEach(([id, secret], index) => {
+              const envName = toBuildSecretEnvName(id, index);
+              envs[envName] = secret;
+              secretEnvs.push(`${id}=${envName}`);
+            });
+            Object.entries(envs).forEach(([key, value]) => {
+              core.exportVariable(key, value);
+            });
+            core.setOutput('secret-envs', secretEnvs.join('\n'));
             
             if (GitHub.context.payload.repository?.private ?? false) {
               // if this is a private repository, we set min provenance mode
@@ -909,13 +983,10 @@ jobs:
           platforms: ${{ steps.prepare.outputs.platform }}
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}
-          secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
+          secret-envs: ${{ steps.prepare.outputs.secret-envs }}
           shm-size: ${{ inputs.shm-size }}
           target: ${{ inputs.target }}
           ulimit: ${{ inputs.ulimit }}
-        env:
-          BUILDKIT_MULTI_PLATFORM: 1
-          GIT_AUTH_TOKEN: ${{ secrets.github-token || github.token }}
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}

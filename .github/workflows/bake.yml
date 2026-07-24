@@ -143,6 +143,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs, optionally target-scoped, to secret values"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -207,6 +210,7 @@ jobs:
       includes: ${{ steps.set.outputs.includes }}
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
+      secretIds: ${{ steps.set.outputs.secretIds }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
     steps:
       -
@@ -479,7 +483,7 @@ jobs:
               }
             );
             await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
             });
 
             const metaImages = inpMetaImages.map(image => image.toLowerCase());
@@ -517,6 +521,16 @@ jobs:
                   const match = value.match(/^target:(.+)$/);
                   return match ? match[1] : undefined;
                 };
+                const parseSecretId = secret => {
+                  if (typeof secret === 'string') {
+                    const idAttr = secret.split(',').map(attr => attr.trim()).find(attr => attr.startsWith('id='));
+                    return idAttr ? idAttr.substring(3) : undefined;
+                  }
+                  if (secret && typeof secret === 'object' && typeof secret.id === 'string') {
+                    return secret.id;
+                  }
+                  return undefined;
+                };
                 const resolveTarget = () => {
                   if (targetDefs[inpTarget]) {
                     return inpTarget;
@@ -545,6 +559,11 @@ jobs:
                 if (unsupportedTargets.length > 0) {
                   throw new Error(`Only one target can be built at once, found unsupported targets: ${unsupportedTargets.join(', ')}`);
                 }
+                const secretIds = {};
+                for (const name of allowedTargets) {
+                  secretIds[name] = (targetDefs[name]?.secret || []).map(parseSecretId).filter(Boolean);
+                }
+                core.setOutput('secretIds', JSON.stringify(secretIds));
               });
             } catch (error) {
               core.setFailed(error);
@@ -830,6 +849,8 @@ jobs:
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
+          INPUT_SECRET-IDS: ${{ needs.prepare.outputs.secretIds }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_FILES: ${{ inputs.files }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -853,7 +874,14 @@ jobs:
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
+
+            let yaml;
+            try {
+              yaml = require('js-yaml');
+            } catch {
+              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
+            }
+
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -864,6 +892,8 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets');
+            const inpSecretIds = core.getInput('secret-ids');
             const inpContext = core.getInput('context');
             const inpFiles = Util.getInputList('files');
             const inpOutput = core.getInput('output');
@@ -887,6 +917,70 @@ jobs:
               tags: inpMetaTags
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
+
+            const parseBuildSecrets = value => {
+              const normalized = value.trim();
+              if (!normalized) {
+                return [];
+              }
+              let parsed;
+              try {
+                parsed = yaml.load(normalized, {schema: yaml.FAILSAFE_SCHEMA});
+              } catch (err) {
+                const location = err.mark ? ` at line ${err.mark.line + 1}, column ${err.mark.column + 1}` : '';
+                throw new Error(`Failed to parse build-secrets YAML${location}`);
+              }
+              if (!parsed) {
+                return [];
+              }
+              if (Array.isArray(parsed) || typeof parsed !== 'object') {
+                throw new Error('build-secrets must be a YAML object');
+              }
+              const secrets = [];
+              const seen = new Set();
+              for (const [key, secret] of Object.entries(parsed)) {
+                const separator = key.lastIndexOf('.');
+                const target = separator === -1 ? inpTarget : key.substring(0, separator);
+                const id = separator === -1 ? key : key.substring(separator + 1);
+                if (!target) {
+                  throw new Error(`Invalid build secret target for "${key}": target must not be empty`);
+                }
+                if (!/^[A-Za-z0-9_.-]+$/.test(target)) {
+                  throw new Error(`Invalid build secret target "${target}": use letters, digits, dots, underscores or dashes`);
+                }
+                if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+                  throw new Error(`Invalid build secret id "${id}": use letters, digits, underscores or dashes`);
+                }
+                if (typeof secret !== 'string') {
+                  throw new Error(`build-secrets value for "${key}" must be a string`);
+                }
+                if (secret.length === 0) {
+                  throw new Error(`build-secrets value for "${key}" must not be empty`);
+                }
+                const ref = `${target}\0${id}`;
+                if (seen.has(ref)) {
+                  throw new Error(`Build secret id "${id}" is defined more than once for target "${target}"`);
+                }
+                seen.add(ref);
+                core.setSecret(secret);
+                secrets.push({target, id, secret});
+              }
+              return secrets;
+            };
+
+            const validateBuildSecrets = (secrets, secretIds) => {
+              for (const {target, id} of secrets) {
+                const targetSecretIds = secretIds[target];
+                if (!targetSecretIds) {
+                  throw new Error(`Build secret target "${target}" is not part of the resolved Bake definition`);
+                }
+                if (!Array.isArray(targetSecretIds) || !targetSecretIds.includes(id)) {
+                  throw new Error(`Build secret "${id}" must be declared in Bake target "${target}" before it can be provided through build-secrets`);
+                }
+              }
+            };
+
+            const toBuildSecretEnvName = (id, index) => `BUILD_SECRET_${index}_${id.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
             
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
@@ -905,7 +999,24 @@ jobs:
               core.info(sbom);
               core.setOutput('sbom', sbom);
             });
-            
+
+            let buildSecrets;
+            try {
+              buildSecrets = parseBuildSecrets(inpBuildSecrets);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+
+            let secretIds;
+            try {
+              secretIds = JSON.parse(inpSecretIds || '{}');
+              validateBuildSecrets(buildSecrets, secretIds);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+
             const envs = Object.assign({},
               inpVars ? inpVars.reduce((acc, curr) => {
                 const idx = curr.indexOf('=');
@@ -919,9 +1030,17 @@ jobs:
                 BUILDX_BAKE_GIT_AUTH_TOKEN: inpGitHubToken
               }
             );
+            const secretOverrides = [];
+            buildSecrets.forEach(({target, id, secret}, index) => {
+              const envName = toBuildSecretEnvName(id, index);
+              envs[envName] = secret;
+              secretOverrides.push(`${target}.secrets+=id=${id},env=${envName}`);
+            });
             await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
-              core.setOutput('envs', JSON.stringify(envs));
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
+              Object.entries(envs).forEach(([key, value]) => {
+                core.exportVariable(key, value);
+              });
             });
             
             let bakeFiles = inpFiles;
@@ -983,6 +1102,7 @@ jobs:
                 bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}`);
                 bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix},mode=${inpCacheMode}`);
               }
+              bakeOverrides.push(...secretOverrides);
               core.info(JSON.stringify(bakeOverrides, null, 2));
               core.setOutput('overrides', bakeOverrides.join(os.EOL));
             });
@@ -1037,7 +1157,6 @@ jobs:
           targets: ${{ steps.prepare.outputs.target }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
-        env: ${{ fromJson(steps.prepare.outputs.envs || '{}') }}
       -
         name: Get image digest
         id: get-image-digest

@@ -504,6 +504,22 @@ jobs:
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
 
+  build-secret:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-upload: false
+      file: test/secret.Dockerfile
+      output: local
+    secrets:
+      build-secrets: |
+        fixture_plain: |
+          alpha-line
+          beta-line
+        fixture_json: ${{ toJSON(format('gamma-line{0}delta-line{0}', fromJSON('"\n"'))) }}
+
   build-set-runner:
     uses: ./.github/workflows/build.yml
     permissions:

@@ -38,6 +38,14 @@ target "hello-cross" {
   platforms = ["linux/amd64", "linux/arm64"]
 }
 
+target "secret" {
+  dockerfile = "secret.Dockerfile"
+  secret = [
+    "id=fixture_plain,env=FIXTURE_PLAIN",
+    "id=fixture_json,env=FIXTURE_JSON",
+  ]
+}
+
 target "go-cross-with-contexts" {
   inherits = ["go-cross"]
   contexts = {
