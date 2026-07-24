@@ -35,6 +35,18 @@ on:
       gcp-wif-project-id:
         description: "GCP project ID"
         value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-project-id }}
+      dockerhub-oidc-enabled:
+        description: "Whether a Docker Hub OIDC registry identity was configured"
+        value: ${{ jobs.setup-registry-identities.outputs.dockerhub-oidc-enabled }}
+      dockerhub-oidc-registry:
+        description: "Docker Hub registry hostname"
+        value: ${{ jobs.setup-registry-identities.outputs.dockerhub-oidc-registry }}
+      dockerhub-oidc-username:
+        description: "Docker Hub username or organization to authenticate as"
+        value: ${{ jobs.setup-registry-identities.outputs.dockerhub-oidc-username }}
+      dockerhub-oidc-connection-id:
+        description: "Docker Hub OIDC connection ID"
+        value: ${{ jobs.setup-registry-identities.outputs.dockerhub-oidc-connection-id }}
 
 env:
   RUNTIME_MODULE: "@docker/github-builder-runtime@0.94.0"
@@ -62,6 +74,10 @@ jobs:
       gcp-wif-workload-identity-provider: ${{ steps.validate.outputs.gcp-wif-workload-identity-provider }}
       gcp-wif-service-account: ${{ steps.validate.outputs.gcp-wif-service-account }}
       gcp-wif-project-id: ${{ steps.validate.outputs.gcp-wif-project-id }}
+      dockerhub-oidc-enabled: ${{ steps.validate.outputs.dockerhub-oidc-enabled }}
+      dockerhub-oidc-registry: ${{ steps.validate.outputs.dockerhub-oidc-registry }}
+      dockerhub-oidc-username: ${{ steps.validate.outputs.dockerhub-oidc-username }}
+      dockerhub-oidc-connection-id: ${{ steps.validate.outputs.dockerhub-oidc-connection-id }}
     steps:
       -
         name: Install dependencies
@@ -111,6 +127,10 @@ jobs:
               core.setOutput('gcp-wif-workload-identity-provider', '');
               core.setOutput('gcp-wif-service-account', '');
               core.setOutput('gcp-wif-project-id', '');
+              core.setOutput('dockerhub-oidc-enabled', 'false');
+              core.setOutput('dockerhub-oidc-registry', '');
+              core.setOutput('dockerhub-oidc-username', '');
+              core.setOutput('dockerhub-oidc-connection-id', '');
             };
 
             const registryIdentities = core.getInput('registry-identities', {trimWhitespace: false});
@@ -142,6 +162,12 @@ jobs:
               }
               return value.trim();
             };
+            const optionalString = (entry, key, path, defaultValue) => {
+              if (!Object.prototype.hasOwnProperty.call(entry, key)) {
+                return defaultValue;
+              }
+              return requireString(entry, key, path);
+            };
             let parsed;
             try {
               parsed = yaml.load(registryIdentities);
@@ -161,6 +187,7 @@ jobs:
 
             let awsEcr;
             let gcpWif;
+            let dockerhubOidc;
             entries.forEach((entry, index) => {
               const path = `registry-identities[${index}]`;
               ensureObject(entry, path);
@@ -201,6 +228,23 @@ jobs:
                   };
                   break;
                 }
+                case 'dockerhub': {
+                  const allowedKeys = new Set(['type', 'registry', 'username', 'connection_id']);
+                  for (const key of Object.keys(entry)) {
+                    if (!allowedKeys.has(key)) {
+                      fail(`${path}.${key} is not supported for dockerhub`);
+                    }
+                  }
+                  if (dockerhubOidc) {
+                    fail('only one dockerhub registry identity is supported');
+                  }
+                  dockerhubOidc = {
+                    registry: optionalString(entry, 'registry', path, 'docker.io'),
+                    username: requireString(entry, 'username', path),
+                    connectionID: requireString(entry, 'connection_id', path)
+                  };
+                  break;
+                }
                 default:
                   fail(`${path}.type has unsupported provider ${type}`);
               }
@@ -215,3 +259,7 @@ jobs:
             core.setOutput('gcp-wif-workload-identity-provider', gcpWif?.workloadIdentityProvider || '');
             core.setOutput('gcp-wif-service-account', gcpWif?.serviceAccount || '');
             core.setOutput('gcp-wif-project-id', gcpWif?.projectId || '');
+            core.setOutput('dockerhub-oidc-enabled', dockerhubOidc ? 'true' : 'false');
+            core.setOutput('dockerhub-oidc-registry', dockerhubOidc?.registry || '');
+            core.setOutput('dockerhub-oidc-username', dockerhubOidc?.username || '');
+            core.setOutput('dockerhub-oidc-connection-id', dockerhubOidc?.connectionID || '');

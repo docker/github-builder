@@ -184,6 +184,62 @@ jobs:
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
 
+  build-dockerhub-oidc:
+    uses: ./.github/workflows/build.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      job-name-prefix: build-dockerhub-oidc
+      build-args: |
+        VERSION={{meta.version}}
+      file: test/hello.Dockerfile
+      output: image
+      push: true
+      sbom: true
+      registry-identities: |
+        - type: dockerhub
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
+          connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+      meta-images: |
+        docker.io/dockereng/github-builder-test
+      meta-tags: |
+        type=raw,value=build-ghbuilder-oidc-${{ github.run_id }}
+
+  build-dockerhub-oidc-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-dockerhub-oidc
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      builder-outputs: ${{ toJSON(needs.build-dockerhub-oidc.outputs) }}
+      registry-identities: |
+        - type: dockerhub
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
+          connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+
+  build-dockerhub-oidc-outputs:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-dockerhub-oidc
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.build-dockerhub-oidc.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   build-dockerhub-scan:
     runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' }}

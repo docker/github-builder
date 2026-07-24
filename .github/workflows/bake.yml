@@ -1022,6 +1022,16 @@ jobs:
               username: oauth2accesstoken
               password: ${{ steps.gcp-wif-auth.outputs.access_token }}
       -
+        name: Login to Docker Hub with OIDC
+        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
+      -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
@@ -1263,6 +1273,16 @@ jobs:
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
               username: oauth2accesstoken
               password: ${{ steps.gcp-wif-auth.outputs.access_token }}
+      -
+        name: Login to Docker Hub with OIDC
+        if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}

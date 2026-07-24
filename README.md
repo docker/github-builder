@@ -19,6 +19,7 @@ ___
 * [Notes](#notes)
   * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Registry identities](#registry-identities)
+    * [Docker Hub OIDC](#docker-hub-oidc)
     * [AWS ECR](#aws-ecr)
     * [Google Artifact Registry](#google-artifact-registry)
   * [Runner mapping](#runner-mapping)
@@ -413,6 +414,48 @@ The workflow validates the YAML before any build work starts.
 secret. Provider-specific authentication steps are pinned in these reusable
 workflows; callers can only select supported provider types and pass identity
 configuration.
+
+The `build.yml`, `bake.yml`, and `verify.yml` reusable workflows accept this
+input. Use the same identity configuration with `verify.yml` when signature
+verification needs access to a private registry image.
+
+#### Docker Hub OIDC
+
+Docker Hub registry authentication can be configured with
+`type: dockerhub`. Callers must grant `id-token: write` so
+`docker/login-action` can exchange the GitHub OIDC token through the configured
+[Docker Hub OIDC connection](https://docs.docker.com/enterprise/security/oidc-connections/):
+
+```yaml
+jobs:
+  build:
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    permissions:
+      contents: read # to fetch the repository content
+      id-token: write # for signing attestations, cache entries with GitHub OIDC and logging in to Docker Hub
+    with:
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      meta-images: |
+        docker.io/my-organization/test-github-builder
+      registry-identities: |
+        - type: dockerhub
+          username: my-organization
+          connection_id: 123e4567-e89b-42d3-a456-426614174000
+```
+
+| Name            | Type   | Description                                                                 |
+|-----------------|--------|-----------------------------------------------------------------------------|
+| `type`          | String | Registry identity provider type. Must be `dockerhub`.                       |
+| `registry`      | String | Registry hostname passed to `docker/login-action`. Defaults to `docker.io`. |
+| `username`      | String | Docker Hub username or organization passed to `docker/login-action`.        |
+| `connection_id` | String | Docker Hub OIDC connection ID passed to `docker/login-action` in each job.  |
+
+The workflow mints the Docker Hub access token inside each reusable workflow
+job that needs Docker Hub registry access. The token is not accepted as an
+input and is not passed across the reusable workflow boundary. If you call
+`verify.yml` for a private Docker Hub image, pass the same
+`registry-identities` value to that workflow instead of using a Docker Hub PAT.
 
 #### AWS ECR
 
