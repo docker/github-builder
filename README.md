@@ -415,6 +415,10 @@ secret. Provider-specific authentication steps are pinned in these reusable
 workflows; callers can only select supported provider types and pass identity
 configuration.
 
+The `build.yml`, `bake.yml`, and `verify.yml` reusable workflows accept this
+input. Use the same identity configuration with `verify.yml` when signature
+verification needs access to a private registry image.
+
 #### Docker Hub OIDC
 
 Docker Hub registry authentication can be configured with
