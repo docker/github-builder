@@ -267,6 +267,7 @@ jobs:
 
             const cosign = new Cosign();
             await cosign.printVersion();
+            await exec.exec(cosign.binPath, ['initialize']);
       -
         name: Check dependencies signatures
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -698,6 +699,7 @@ jobs:
 
             const cosign = new Cosign();
             await cosign.printVersion();
+            await exec.exec(cosign.binPath, ['initialize']);
             
             const containerName = `${Buildx.containerNamePrefix}${inpBuilderName}0`;
             
