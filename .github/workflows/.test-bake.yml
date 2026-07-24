@@ -187,6 +187,63 @@ jobs:
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
 
+  bake-dockerhub-oidc:
+    uses: ./.github/workflows/bake.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      job-name-prefix: bake-dockerhub-oidc
+      context: test
+      output: image
+      push: true
+      sbom: true
+      set: |
+        *.args.VERSION={{meta.version}}
+      target: hello
+      registry-identities: |
+        - type: dockerhub
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
+          connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+      meta-images: |
+        docker.io/dockereng/github-builder-test
+      meta-tags: |
+        type=raw,value=bake-ghbuilder-oidc-${{ github.run_id }}
+
+  bake-dockerhub-oidc-verify:
+    uses: ./.github/workflows/verify.yml
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - bake-dockerhub-oidc
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      builder-outputs: ${{ toJSON(needs.bake-dockerhub-oidc.outputs) }}
+      registry-identities: |
+        - type: dockerhub
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
+          connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+
+  bake-dockerhub-oidc-outputs:
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - bake-dockerhub-oidc
+    steps:
+      -
+        name: Builder outputs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_BUILDER-OUTPUTS: ${{ toJSON(needs.bake-dockerhub-oidc.outputs) }}
+        with:
+          script: |
+            const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
+            core.info(JSON.stringify(builderOutputs, null, 2));
+
   bake-dockerhub-scan:
     runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' }}
