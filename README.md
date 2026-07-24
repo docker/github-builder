@@ -19,6 +19,8 @@ ___
 * [Notes](#notes)
   * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Registry identities](#registry-identities)
+    * [AWS ECR](#aws-ecr)
+    * [Google Artifact Registry](#google-artifact-registry)
   * [Runner mapping](#runner-mapping)
   * [Metadata templates](#metadata-templates)
 
@@ -412,9 +414,11 @@ secret. Provider-specific authentication steps are pinned in these reusable
 workflows; callers can only select supported provider types and pass identity
 configuration.
 
-Amazon ECR private registry authentication is configured with `type: aws-ecr`.
-Callers must grant `id-token: write` so the AWS credential step can assume the
-role through GitHub OIDC:
+#### AWS ECR
+
+Amazon ECR registry authentication is configured with `type: aws-ecr`. Callers
+must grant `id-token: write` so the AWS credential step can assume the role
+through GitHub OIDC:
 
 ```yaml
 jobs:
@@ -430,14 +434,61 @@ jobs:
         123456789100.dkr.ecr.us-east-1.amazonaws.com/sandbox/test-github-builder
       registry-identities: |
         - type: aws-ecr
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::123456789100:role/my-github-actions-role
           registry: 123456789100.dkr.ecr.us-east-1.amazonaws.com
+          role-to-assume: arn:aws:iam::123456789100:role/my-github-actions-role
+          region: us-east-1
 ```
+
+| Name             | Type   | Description                                                                                                                     |
+|------------------|--------|---------------------------------------------------------------------------------------------------------------------------------|
+| `type`           | String | Registry identity provider type. Must be `aws-ecr`.                                                                             |
+| `registry`       | String | Registry server passed to `docker/login-action`, such as `public.ecr.aws` for public ECR or a private ECR host for private ECR. |
+| `role-to-assume` | String | IAM role ARN assumed through GitHub OIDC.                                                                                       |
+| `region`         | String | AWS region passed to `aws-actions/configure-aws-credentials` when assuming the role. Use `us-east-1` for ECR Public.            |
 
 The `registry` value is required for AWS ECR. Use the registry server that
 `docker/login-action` should log in to, such as `public.ecr.aws` for public ECR
 or `123456789100.dkr.ecr.us-east-1.amazonaws.com` for private ECR.
+
+#### Google Artifact Registry
+
+Google Artifact Registry authentication is configured with `type: gcp-wif`.
+Callers must grant `id-token: write` so `google-github-actions/auth` can
+exchange the GitHub OIDC token through GCP Workload Identity Federation:
+
+```yaml
+jobs:
+  build:
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    permissions:
+      contents: read # to fetch the repository content
+      id-token: write # for signing attestations, cache entries with GitHub OIDC and log in to Google Artifact Registry
+    with:
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      meta-images: |
+        us-docker.pkg.dev/my-project/sandbox/test-github-builder
+      registry-identities: |
+        - type: gcp-wif
+          registry: us-docker.pkg.dev
+          workload_identity_provider: projects/123456789/locations/global/workloadIdentityPools/github/providers/provider
+          service_account: builder@my-project.iam.gserviceaccount.com
+          project_id: my-project
+```
+
+| Name                         | Type   | Description                                                                                                                                    |
+|------------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `type`                       | String | Registry identity provider type. Must be `gcp-wif`.                                                                                            |
+| `registry`                   | String | Google Artifact Registry host passed to `docker/login-action`, such as `us-docker.pkg.dev`. Do not use the full repository path.               |
+| `workload_identity_provider` | String | Workload Identity Provider resource name passed to `google-github-actions/auth`.                                                               |
+| `service_account`            | String | Service account email passed to `google-github-actions/auth` for Workload Identity Federation.                                                 |
+| `project_id`                 | String | Google Cloud project ID passed to `google-github-actions/auth`.                                                                                |
+
+The `registry` value is required for GCP WIF. Use the Artifact Registry host
+that `docker/login-action` should log in to, such as `us-docker.pkg.dev`, not
+the full repository path. The workflow requests an access token from
+`google-github-actions/auth` and passes it directly to `docker/login-action`
+with the `oauth2accesstoken` username inside the same job.
 
 ### Runner mapping
 

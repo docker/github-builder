@@ -998,7 +998,29 @@ jobs:
         if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          registry-auth: ${{ needs.registry-identities.outputs.aws-ecr-registry-auth }}
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
+      -
+        name: Authenticate to Google Cloud
+        id: gcp-wif-auth
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
@@ -1218,7 +1240,29 @@ jobs:
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          registry-auth: ${{ needs.registry-identities.outputs.aws-ecr-registry-auth }}
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
+      -
+        name: Authenticate to Google Cloud
+        id: gcp-wif-auth
+        if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry
+        if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}

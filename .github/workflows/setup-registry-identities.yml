@@ -1,4 +1,4 @@
-name: registry-identities
+name: setup-registry-identities
 
 on:
   workflow_call:
@@ -11,18 +11,33 @@ on:
       aws-ecr-enabled:
         description: "Whether an AWS ECR registry identity was configured"
         value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-enabled }}
+      aws-ecr-registry:
+        description: "AWS ECR registry host to authenticate against"
+        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-registry }}
       aws-ecr-role-to-assume:
         description: "AWS IAM role ARN to assume for ECR authentication"
         value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-role-to-assume }}
       aws-ecr-region:
         description: "AWS region to use for ECR authentication"
         value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-region }}
-      aws-ecr-registry-auth:
-        description: "Registry auth YAML for Docker login"
-        value: ${{ jobs.setup-registry-identities.outputs.aws-ecr-registry-auth }}
+      gcp-wif-enabled:
+        description: "Whether a GCP Workload Identity Federation registry identity was configured"
+        value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-enabled }}
+      gcp-wif-registry:
+        description: "Google Artifact Registry host to authenticate against"
+        value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-registry }}
+      gcp-wif-workload-identity-provider:
+        description: "GCP Workload Identity Provider resource name"
+        value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-workload-identity-provider }}
+      gcp-wif-service-account:
+        description: "GCP service account to impersonate"
+        value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-service-account }}
+      gcp-wif-project-id:
+        description: "GCP project ID"
+        value: ${{ jobs.setup-registry-identities.outputs.gcp-wif-project-id }}
 
 env:
-  RUNTIME_MODULE: "@docker/github-builder-runtime@0.92.0"
+  RUNTIME_MODULE: "@docker/github-builder-runtime@0.93.0"
   RUNTIME_INSTALL_ARGS: |
     --loglevel=error
     --no-save
@@ -39,9 +54,14 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       aws-ecr-enabled: ${{ steps.validate.outputs.aws-ecr-enabled }}
+      aws-ecr-registry: ${{ steps.validate.outputs.aws-ecr-registry }}
       aws-ecr-role-to-assume: ${{ steps.validate.outputs.aws-ecr-role-to-assume }}
       aws-ecr-region: ${{ steps.validate.outputs.aws-ecr-region }}
-      aws-ecr-registry-auth: ${{ steps.validate.outputs.aws-ecr-registry-auth }}
+      gcp-wif-enabled: ${{ steps.validate.outputs.gcp-wif-enabled }}
+      gcp-wif-registry: ${{ steps.validate.outputs.gcp-wif-registry }}
+      gcp-wif-workload-identity-provider: ${{ steps.validate.outputs.gcp-wif-workload-identity-provider }}
+      gcp-wif-service-account: ${{ steps.validate.outputs.gcp-wif-service-account }}
+      gcp-wif-project-id: ${{ steps.validate.outputs.gcp-wif-project-id }}
     steps:
       -
         name: Install dependencies
@@ -83,9 +103,14 @@ jobs:
           script: |
             const setEmptyOutputs = () => {
               core.setOutput('aws-ecr-enabled', 'false');
+              core.setOutput('aws-ecr-registry', '');
               core.setOutput('aws-ecr-role-to-assume', '');
               core.setOutput('aws-ecr-region', '');
-              core.setOutput('aws-ecr-registry-auth', '');
+              core.setOutput('gcp-wif-enabled', 'false');
+              core.setOutput('gcp-wif-registry', '');
+              core.setOutput('gcp-wif-workload-identity-provider', '');
+              core.setOutput('gcp-wif-service-account', '');
+              core.setOutput('gcp-wif-project-id', '');
             };
 
             const registryIdentities = core.getInput('registry-identities', {trimWhitespace: false});
@@ -135,13 +160,14 @@ jobs:
             }
 
             let awsEcr;
+            let gcpWif;
             entries.forEach((entry, index) => {
               const path = `registry-identities[${index}]`;
               ensureObject(entry, path);
               const type = requireString(entry, 'type', path);
               switch (type) {
                 case 'aws-ecr': {
-                  const allowedKeys = new Set(['type', 'aws-region', 'role-to-assume', 'registry']);
+                  const allowedKeys = new Set(['type', 'registry', 'role-to-assume', 'region']);
                   for (const key of Object.keys(entry)) {
                     if (!allowedKeys.has(key)) {
                       fail(`${path}.${key} is not supported for aws-ecr`);
@@ -150,15 +176,28 @@ jobs:
                   if (awsEcr) {
                     fail('only one aws-ecr registry identity is supported');
                   }
-                  const awsRegion = requireString(entry, 'aws-region', path);
-                  const roleToAssume = requireString(entry, 'role-to-assume', path);
-                  const registry = requireString(entry, 'registry', path);
                   awsEcr = {
-                    awsRegion,
-                    roleToAssume,
-                    registryAuth: yaml.dump([{
-                      registry
-                    }], {lineWidth: -1})
+                    registry: requireString(entry, 'registry', path),
+                    roleToAssume: requireString(entry, 'role-to-assume', path),
+                    region: requireString(entry, 'region', path)
+                  };
+                  break;
+                }
+                case 'gcp-wif': {
+                  const allowedKeys = new Set(['type', 'registry', 'workload_identity_provider', 'service_account', 'project_id']);
+                  for (const key of Object.keys(entry)) {
+                    if (!allowedKeys.has(key)) {
+                      fail(`${path}.${key} is not supported for gcp-wif`);
+                    }
+                  }
+                  if (gcpWif) {
+                    fail('only one gcp-wif registry identity is supported');
+                  }
+                  gcpWif = {
+                    registry: requireString(entry, 'registry', path),
+                    workloadIdentityProvider: requireString(entry, 'workload_identity_provider', path),
+                    serviceAccount: requireString(entry, 'service_account', path),
+                    projectId: requireString(entry, 'project_id', path)
                   };
                   break;
                 }
@@ -168,6 +207,11 @@ jobs:
             });
 
             core.setOutput('aws-ecr-enabled', awsEcr ? 'true' : 'false');
+            core.setOutput('aws-ecr-registry', awsEcr?.registry || '');
             core.setOutput('aws-ecr-role-to-assume', awsEcr?.roleToAssume || '');
-            core.setOutput('aws-ecr-region', awsEcr?.awsRegion || '');
-            core.setOutput('aws-ecr-registry-auth', awsEcr?.registryAuth || '');
+            core.setOutput('aws-ecr-region', awsEcr?.region || '');
+            core.setOutput('gcp-wif-enabled', gcpWif ? 'true' : 'false');
+            core.setOutput('gcp-wif-registry', gcpWif?.registry || '');
+            core.setOutput('gcp-wif-workload-identity-provider', gcpWif?.workloadIdentityProvider || '');
+            core.setOutput('gcp-wif-service-account', gcpWif?.serviceAccount || '');
+            core.setOutput('gcp-wif-project-id', gcpWif?.projectId || '');
