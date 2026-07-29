@@ -862,7 +862,7 @@ jobs:
       -
         name: Login to Amazon ECR
         if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
@@ -881,7 +881,7 @@ jobs:
       -
         name: Login to Google Artifact Registry
         if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
@@ -890,7 +890,7 @@ jobs:
       -
         name: Login to Docker Hub with OIDC
         if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
         with:
@@ -900,7 +900,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
@@ -929,7 +929,7 @@ jobs:
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
@@ -1110,7 +1110,7 @@ jobs:
       -
         name: Login to Amazon ECR
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
@@ -1129,7 +1129,7 @@ jobs:
       -
         name: Login to Google Artifact Registry
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
@@ -1138,7 +1138,7 @@ jobs:
       -
         name: Login to Docker Hub with OIDC
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
         with:
@@ -1148,7 +1148,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
