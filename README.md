@@ -17,6 +17,7 @@ ___
   * [Secrets](#secrets-1)
   * [Outputs](#outputs-1)
 * [Notes](#notes)
+  * [BuildKit secrets](#buildkit-secrets)
   * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Registry identities](#registry-identities)
     * [Docker Hub OIDC](#docker-hub-oidc)
@@ -258,6 +259,7 @@ jobs:
 | Name             | Default               | Description                                                                    |
 |------------------|-----------------------|--------------------------------------------------------------------------------|
 | `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
+| `build-secrets`  |                       | YAML object mapping BuildKit secret IDs to secret values                       |
 | `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
 
 ### Outputs
@@ -365,12 +367,19 @@ jobs:
 | `meta-annotations`        | List   |                                       | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                          |
 | `meta-flavor`             | List   |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                        |
 
+> [!NOTE]
+> The `vars` input is passed to Buildx as explicit Bake variables. Ambient
+> environment lookup for Bake variables is disabled, except that step environment
+> variables with `GITHUB_` or `RUNNER_` prefixes are forwarded as explicit vars
+> for workflows that declare them in their Bake definition.
+
 ### Secrets
 
-| Name             | Default               | Description                                                                    |
-|------------------|-----------------------|--------------------------------------------------------------------------------|
-| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
-| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+| Name             | Default               | Description                                                                         |
+|------------------|-----------------------|-------------------------------------------------------------------------------------|
+| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output)      |
+| `build-secrets`  |                       | YAML object mapping BuildKit secret IDs, optionally target-scoped, to secret values |
+| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context            |
 
 ### Outputs
 
@@ -389,6 +398,61 @@ with `builder-outputs: ${{ toJSON(needs.<job_id>.outputs) }}`.
 | `signed`                 | Bool   | Whether attestation manifests or local artifacts were signed                 |
 
 ## Notes
+
+### BuildKit secrets
+
+The `build-secrets` secret is shared by the build and bake workflows. It must
+be a YAML object. For the build workflow, each key is the BuildKit secret ID and
+each value is the secret payload. The bake workflow accepts the same unqualified
+keys.
+
+```yaml
+secrets:
+  build-secrets: |
+    npmrc: ${{ toJSON(secrets.NPMRC) }}
+    aws_credentials: ${{ toJSON(secrets.AWS_CREDENTIALS) }}
+    inline_config: |
+      first line
+      second line
+```
+
+Use `toJSON(...)` when injecting GitHub secrets so values that contain newlines
+or YAML syntax are preserved as a single YAML scalar.
+
+Each secret is exposed as an env-backed BuildKit secret. The build workflow
+passes these values through `docker/build-push-action` `secret-envs`, and the
+bake workflow sets matching `target.secret.<id>=env=...` source overrides. For
+the bake workflow, an unqualified key applies to the workflow `target` input. A
+key written as `target.secret_id` applies only to that Bake target. This
+target-scoped key form is only accepted by the bake workflow. The target must be
+part of the resolved Bake build, and Buildx requires the target to already
+declare a matching secret ID in the Bake definition:
+
+```yaml
+secrets:
+  build-secrets: |
+    default.npmrc: ${{ toJSON(secrets.NPMRC) }}
+    release.aws_credentials: ${{ toJSON(secrets.AWS_CREDENTIALS) }}
+```
+
+Bake targets can declare local secret sources for direct `docker buildx bake`
+usage. When the reusable workflow receives a matching `build-secrets` entry, it
+overrides that declared source with the workflow-provided secret value:
+
+```hcl
+target "default" {
+  secret = [
+    "id=npmrc,env=NPMRC",
+    "type=file,id=aws_credentials,src=${HOME}/.aws/credentials",
+  ]
+}
+```
+
+The workflow does not accept file-based secret payloads. `build-secrets` values
+are always exposed to BuildKit from environment variables. A Bake target can
+still declare a file-based source for local `docker buildx bake` usage, as shown
+above, but a matching `build-secrets` entry overrides that source in the reusable
+workflow.
 
 ### Signed GitHub Actions cache
 

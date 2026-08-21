@@ -465,6 +465,23 @@ jobs:
             const builderOutputs = JSON.parse(core.getInput('builder-outputs'));
             core.info(JSON.stringify(builderOutputs, null, 2));
 
+  bake-secret:
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      artifact-upload: false
+      context: test
+      output: local
+      target: foosec
+    secrets:
+      build-secrets: |
+        fixture_plain: |
+          alpha-line
+          beta-line
+        foosec.fixture_json: ${{ toJSON(format('gamma-line{0}delta-line{0}', fromJSON('"\n"'))) }}
+
   bake-set-runner:
     uses: ./.github/workflows/bake.yml
     permissions:
@@ -565,11 +582,10 @@ jobs:
       contents: read
       id-token: write
     with:
-      setup-qemu: true
       artifact-upload: false
       context: test
       output: local
-      target: go
+      target: vars
       vars: |
         XX_VERSION=1.9.0
 
