@@ -116,6 +116,7 @@ jobs:
 
             const cosign = new Cosign();
             await cosign.printVersion();
+            await exec.exec(cosign.binPath, ['initialize']);
       -
         name: Configure AWS credentials
         if: ${{ steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' && needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
