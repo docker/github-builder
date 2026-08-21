@@ -139,6 +139,12 @@ on:
         type: string
         description: "Bake target name for metadata (defaults to docker-metadata-action)"
         required: false
+      # buildkit config
+      buildkit-proxy-network:
+        type: boolean
+        description: "Enable BuildKit proxy network mode"
+        required: false
+        default: false
     secrets:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
@@ -210,6 +216,7 @@ jobs:
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
+      proxyNetwork: ${{ steps.set.outputs.proxyNetwork }}
     steps:
       -
         name: Install dependencies
@@ -315,6 +322,7 @@ jobs:
           INPUT_TARGET: ${{ inputs.target }}
           INPUT_VARS: ${{ inputs.vars }}
           INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
+          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
             const os = require('os');
@@ -342,6 +350,7 @@ jobs:
             const inpSign = core.getInput('sign');
             const inpTarget = core.getInput('target');
             const inpGitHubToken = core.getInput('github-token');
+            const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
             const parseRunnerConfig = value => {
               const lines = value.map(line => line.trim()).filter(line => line.length > 0);
@@ -564,6 +573,12 @@ jobs:
               core.info(`privateRepo: ${privateRepo}`);
               core.setOutput('privateRepo', privateRepo);
             });
+
+            await core.group(`Set proxyNetwork output`, async () => {
+              const proxyNetwork = inpProxyNetwork ? 'true' : 'false';
+              core.info(`proxyNetwork: ${proxyNetwork}`);
+              core.setOutput('proxyNetwork', proxyNetwork);
+            });
             
             await core.group(`Set includes output`, async () => {
               const withJobNamePrefix = include => {
@@ -719,6 +734,8 @@ jobs:
             env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ steps.github-runtime.outputs.actions-id-token-request-token }}
             env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ steps.github-runtime.outputs.actions-id-token-request-url }}
           buildkitd-config-inline: |
+            proxyNetwork = ${{ needs.prepare.outputs.proxyNetwork }}
+
             [cache]
               [cache.gha]
                 [cache.gha.sign]
@@ -849,6 +866,7 @@ jobs:
           INPUT_BAKE-FILE-ANNOTATIONS: ${{ steps.meta.outputs.bake-file-annotations }}
           INPUT_BAKE-FILE-LABELS: ${{ steps.meta.outputs.bake-file-labels }}
           INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
+          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
             const os = require('os');
@@ -874,6 +892,9 @@ jobs:
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpTarget = core.getInput('target');
             const inpVars = Util.getInputList('vars');
+            const inpGitHubToken = core.getInput('github-token');
+            const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
+
             const inpMetaImages = core.getMultilineInput('meta-images');
             const inpMetaVersion = core.getInput('meta-version');
             const inpMetaTags = core.getMultilineInput('meta-tags');
@@ -882,7 +903,6 @@ jobs:
             const inpBakeFileTags = core.getInput('bake-file-tags');
             const inpBakeFileAnnotations = core.getInput('bake-file-annotations');
             const inpBakeFileLabels = core.getInput('bake-file-labels');
-            const inpGitHubToken = core.getInput('github-token');
 
             const meta = {
               version: inpMetaVersion,
@@ -982,8 +1002,9 @@ jobs:
                 bakeOverrides.push(`*.platform=${inpPlatform}`);
               }
               if (inpCache) {
-                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}`);
-                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix},mode=${inpCacheMode}`);
+                const proxyNetworkSuffix = inpBuildkitProxyNetwork ? '-proxy-network' : '';
+                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix}`);
+                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix},mode=${inpCacheMode}`);
               }
               core.info(JSON.stringify(bakeOverrides, null, 2));
               core.setOutput('overrides', bakeOverrides.join(os.EOL));

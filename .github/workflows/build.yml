@@ -150,6 +150,12 @@ on:
         type: string
         description: "Flavor defines a global behavior for meta-tags"
         required: false
+      # buildkit config
+      buildkit-proxy-network:
+        type: boolean
+        description: "Enable BuildKit proxy network mode"
+        required: false
+        default: false
     secrets:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
@@ -221,6 +227,7 @@ jobs:
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
+      proxyNetwork: ${{ steps.set.outputs.proxyNetwork }}
     steps:
       -
         name: Install dependencies
@@ -311,6 +318,7 @@ jobs:
           INPUT_PLATFORMS: ${{ inputs.platforms }}
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_SIGN: ${{ inputs.sign }}
+          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
@@ -328,6 +336,7 @@ jobs:
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
             const inpSign = core.getInput('sign');
+            const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
             const parseRunnerConfig = value => {
               const lines = value.map(line => line.trim()).filter(line => line.length > 0);
@@ -456,6 +465,12 @@ jobs:
             await core.group(`Set privateRepo output`, async () => {
               core.info(`privateRepo: ${privateRepo}`);
               core.setOutput('privateRepo', privateRepo);
+            });
+
+            await core.group(`Set proxyNetwork output`, async () => {
+              const proxyNetwork = inpProxyNetwork ? 'true' : 'false';
+              core.info(`proxyNetwork: ${proxyNetwork}`);
+              core.setOutput('proxyNetwork', proxyNetwork);
             });
 
             const metaImages = inpMetaImages.map(image => image.toLowerCase());
@@ -617,6 +632,8 @@ jobs:
             env.ACTIONS_ID_TOKEN_REQUEST_TOKEN=${{ steps.github-runtime.outputs.actions-id-token-request-token }}
             env.ACTIONS_ID_TOKEN_REQUEST_URL=${{ steps.github-runtime.outputs.actions-id-token-request-url }}
           buildkitd-config-inline: |
+            proxyNetwork = ${{ needs.prepare.outputs.proxyNetwork }}
+
             [cache]
               [cache.gha]
                 [cache.gha.sign]
@@ -733,6 +750,7 @@ jobs:
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
           INPUT_LABELS: ${{ inputs.labels }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -773,6 +791,7 @@ jobs:
             const inpPush = core.getBooleanInput('push');
             const inpSbom = core.getBooleanInput('sbom');
             const inpTarget = core.getInput('target');
+            const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
             const inpMetaImages = core.getMultilineInput('meta-images');
             const inpMetaVersion = core.getInput('meta-version');
@@ -786,9 +805,7 @@ jobs:
               version: inpMetaVersion,
               tags: inpMetaTags
             };
-
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
-            const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
             
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
@@ -819,14 +836,16 @@ jobs:
             core.setOutput('sbom', inpSbom ? `generator=${inpSbomImage}` : 'false');
             
             if (inpCache) {
-              core.setOutput('cache-from', `type=gha,scope=${inpCacheScope || inpTarget || 'buildkit'}${platformPairSuffix}`);
-              core.setOutput('cache-to', `type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget || 'buildkit'}${platformPairSuffix},mode=${inpCacheMode}`);
+              const proxyNetworkSuffix = inpBuildkitProxyNetwork ? '-proxy-network' : '';
+              core.setOutput('cache-from', `type=gha,scope=${inpCacheScope || inpTarget || 'buildkit'}${platformPairSuffix}${proxyNetworkSuffix}`);
+              core.setOutput('cache-to', `type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget || 'buildkit'}${platformPairSuffix}${proxyNetworkSuffix},mode=${inpCacheMode}`);
             }
             
             let annotations;
             let labels;
             let buildArgs;
             try {
+              const toMultilineInput = value => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
               annotations = toMultilineInput(renderTemplate(inpAnnotations));
               labels = toMultilineInput(renderTemplate(inpLabels));
               buildArgs = renderTemplate(inpBuildArgs);
