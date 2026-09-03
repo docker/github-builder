@@ -38,6 +38,10 @@ target "hello-cross" {
   platforms = ["linux/amd64", "linux/arm64"]
 }
 
+target "proxy-network" {
+  dockerfile = "proxy-network.Dockerfile"
+}
+
 target "go-cross-with-contexts" {
   inherits = ["go-cross"]
   contexts = {
