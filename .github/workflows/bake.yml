@@ -170,7 +170,7 @@ on:
         value: ${{ jobs.finalize.outputs.signed }}
 
 env:
-  BUILDX_VERSION: "v0.36.1"
+  BUILDX_VERSION: "v0.37.0"
   BUILDKIT_IMAGE: "moby/buildkit:v0.32.2"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.12.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.3-68"
