@@ -67,3 +67,8 @@ target "generated-hello2" {
   dockerfile = "hello.Dockerfile"
   output = ["type=cacheonly"]
 }
+
+target "dhi" {
+  inherits = ["docker-metadata-action"]
+  dockerfile = "dhi.Dockerfile"
+}
