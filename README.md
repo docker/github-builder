@@ -17,6 +17,7 @@ ___
   * [Secrets](#secrets-1)
   * [Outputs](#outputs-1)
 * [Notes](#notes)
+  * [BuildKit proxy network](#buildkit-proxy-network)
   * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Registry identities](#registry-identities)
     * [Docker Hub OIDC](#docker-hub-oidc)
@@ -252,6 +253,7 @@ jobs:
 | `meta-labels`             | List     |                                       | [List of custom labels](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                                         |
 | `meta-annotations`        | List     |                                       | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                                    |
 | `meta-flavor`             | List     |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                                  |
+| `buildkit-proxy-network`  | Bool     | `false`                               | Enable BuildKit proxy network mode for default Dockerfile `RUN` networking. See [BuildKit proxy network](#buildkit-proxy-network).                                                                                                                                                                             |
 
 ### Secrets
 
@@ -364,6 +366,7 @@ jobs:
 | `meta-labels`             | List   |                                       | [List of custom labels](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                               |
 | `meta-annotations`        | List   |                                       | [List of custom annotations](https://github.com/docker/metadata-action?tab=readme-ov-file#overwrite-labels-and-annotations)                                                                                                                                                                          |
 | `meta-flavor`             | List   |                                       | [Flavor](https://github.com/docker/metadata-action?tab=readme-ov-file#flavor-input) defines a global behavior for `meta-tags`                                                                                                                                                                        |
+| `buildkit-proxy-network`  | Bool   | `false`                               | Enable BuildKit proxy network mode for default Dockerfile `RUN` networking. See [BuildKit proxy network](#buildkit-proxy-network).                                                                                                                                                                   |
 
 ### Secrets
 
@@ -389,6 +392,36 @@ with `builder-outputs: ${{ toJSON(needs.<job_id>.outputs) }}`.
 | `signed`                 | Bool   | Whether attestation manifests or local artifacts were signed                 |
 
 ## Notes
+
+### BuildKit proxy network
+
+The `buildkit-proxy-network` input enables BuildKit proxy network mode for
+Dockerfile `RUN` steps with network access. `RUN --network=none` stays offline,
+but default-network `RUN` steps are routed through BuildKit's internal HTTP(S)
+proxy.
+
+When enabled, BuildKit rewrites `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and
+`https_proxy` inside affected `RUN` operations to point at that internal proxy.
+It also injects a generated CA certificate into common Linux system trust bundle
+locations for the duration of the operation. HTTPS clients that use separate or
+embedded trust stores may fail TLS verification, and applications that ignore
+proxy environment variables or open raw TCP connections cannot bypass the proxy.
+Direct DNS and non-HTTP(S) protocols, such as Git-over-SSH, are not available
+through this mode.
+
+BuildKit logs proxy network requests. Successful GET responses can be captured
+as build materials and included in provenance dependency metadata when
+provenance is requested. When `cache` is enabled, these workflows append
+`-proxy-network` to the GitHub Actions cache scope while proxy network mode is
+enabled, so unproxied cache entries are not imported into a proxied build. A
+cache hit that was originally produced under proxy mode still does not execute
+the network step again, so it does not emit a fresh request log or add new
+provenance material.
+
+BuildKit does not chain the internal proxy through a caller-provided upstream
+proxy. Enabling `buildkit-proxy-network` replaces Docker's predefined proxy
+build arguments for affected `RUN` operations and can bypass an application-level
+organizational proxy. See BuildKit's [proxy network documentation](https://github.com/moby/buildkit/blob/master/docs/proxy.md).
 
 ### Signed GitHub Actions cache
 
