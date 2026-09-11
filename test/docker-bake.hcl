@@ -15,12 +15,34 @@ variable "XX_VERSION" {
   default = null
 }
 
+variable "BUILDX_VERSION" {
+  default = "not-leaked"
+}
+
+variable "GITHUB_SHA" {
+  default = ""
+}
+
+variable "RUNNER_OS" {
+  default = ""
+}
+
 target "go" {
   inherits = ["docker-metadata-action"]
   args = {
     XX_VERSION = XX_VERSION
   }
   dockerfile = "go.Dockerfile"
+}
+
+target "vars" {
+  args = {
+    BUILDX_VERSION = BUILDX_VERSION
+    GITHUB_SHA     = GITHUB_SHA
+    RUNNER_OS      = RUNNER_OS
+    XX_VERSION     = XX_VERSION
+  }
+  dockerfile = "vars.Dockerfile"
 }
 
 target "go-cross" {
@@ -36,6 +58,14 @@ target "hello" {
 target "hello-cross" {
   inherits = ["hello"]
   platforms = ["linux/amd64", "linux/arm64"]
+}
+
+target "foosec" {
+  dockerfile = "secret.Dockerfile"
+  secret = [
+    "id=fixture_plain,env=FIXTURE_PLAIN",
+    "id=fixture_json,env=FIXTURE_JSON",
+  ]
 }
 
 target "go-cross-with-contexts" {
