@@ -329,6 +329,8 @@ jobs:
             const { Bake } = require('@docker/github-builder-runtime/lib/buildx/bake');
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
+            const { BakeTargets } = require('@docker/github-builder-runtime/lib/github-builder/bake-targets');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
 
             const inpSbomImage = core.getInput('sbom-image');
@@ -352,101 +354,9 @@ jobs:
             const inpGitHubToken = core.getInput('github-token');
             const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
-            const parseRunnerConfig = value => {
-              const lines = value.map(line => line.trim()).filter(line => line.length > 0);
-              if (lines.length === 0) {
-                throw new Error('runner input cannot be empty');
-              }
-              if (lines.length === 1 && !lines[0].includes('=')) {
-                if (lines[0] === 'auto') {
-                  core.warning('The runner input value "auto" is deprecated; use a runner mapping with default=ubuntu-24.04, linux/arm=ubuntu-24.04-arm, and linux/arm64=ubuntu-24.04-arm instead');
-                  return {
-                    defaultRunner: 'ubuntu-24.04',
-                    rules: [
-                      {pattern: 'linux/arm', runner: 'ubuntu-24.04-arm'},
-                      {pattern: 'linux/arm64', runner: 'ubuntu-24.04-arm'}
-                    ]
-                  };
-                }
-                if (lines[0] === 'amd64') {
-                  core.warning('The runner input value "amd64" is deprecated; use runner=ubuntu-24.04 instead');
-                  return {
-                    defaultRunner: 'ubuntu-24.04',
-                    rules: []
-                  };
-                }
-                if (lines[0] === 'arm64') {
-                  core.warning('The runner input value "arm64" is deprecated; use runner=ubuntu-24.04-arm instead');
-                  return {
-                    defaultRunner: 'ubuntu-24.04-arm',
-                    rules: []
-                  };
-                }
-                return {
-                  defaultRunner: lines[0],
-                  rules: []
-                };
-              }
-              const rules = [];
-              let defaultRunner;
-              for (const line of lines) {
-                const idx = line.indexOf('=');
-                if (idx === -1) {
-                  throw new Error(`Invalid runner mapping: ${line}`);
-                }
-                const pattern = line.substring(0, idx).trim();
-                const runner = line.substring(idx + 1).trim();
-                if (!pattern) {
-                  throw new Error('Runner mapping pattern cannot be empty');
-                }
-                if (!runner) {
-                  throw new Error(`Runner mapping value cannot be empty for ${pattern}`);
-                }
-                if (pattern === 'default') {
-                  defaultRunner = runner;
-                  continue;
-                }
-                if (pattern.split('/').some(part => part.length === 0)) {
-                  throw new Error(`Runner mapping pattern is not a valid platform prefix: ${pattern}`);
-                }
-                rules.push({pattern, runner});
-              }
-              if (!defaultRunner) {
-                throw new Error('Runner mapping must define a default runner');
-              }
-              return {
-                defaultRunner,
-                rules
-              };
-            };
-            
-            const matchesPlatformPrefix = (pattern, platform) => {
-              const patternParts = pattern.split('/');
-              const platformParts = platform.split('/');
-              return patternParts.length <= platformParts.length &&
-                patternParts.every((part, index) => part === platformParts[index]);
-            };
-            
-            const resolveRunner = (runnerConfig, platform) => {
-              if (!platform) {
-                return runnerConfig.defaultRunner;
-              }
-              let match;
-              for (const rule of runnerConfig.rules) {
-                if (!matchesPlatformPrefix(rule.pattern, platform)) {
-                  continue;
-                }
-                const specificity = rule.pattern.split('/').length;
-                if (!match || specificity >= match.specificity) {
-                  match = {runner: rule.runner, specificity};
-                }
-              }
-              return match ? match.runner : runnerConfig.defaultRunner;
-            };
-            
             let runnerConfig;
             try {
-              runnerConfig = parseRunnerConfig(inpRunner);
+              runnerConfig = RunnerMapping.parse(inpRunner);
             } catch (error) {
               core.setFailed(error.message);
               return;
@@ -516,46 +426,8 @@ jobs:
                 if (!def) {
                   throw new Error('Bake definition not set');
                 }
-                const targetDefs = def.target || {};
-                const targets = Object.keys(targetDefs);
-                if (targets.length === 0) {
-                  throw new Error('Bake definition does not contain any targets');
-                }
-                const parseContextTarget = value => {
-                  if (typeof value !== 'string') {
-                    return undefined;
-                  }
-                  const match = value.match(/^target:(.+)$/);
-                  return match ? match[1] : undefined;
-                };
-                const resolveTarget = () => {
-                  if (targetDefs[inpTarget]) {
-                    return inpTarget;
-                  }
-                  throw new Error(`Unable to resolve ${inpTarget} target, found: ${targets.join(', ')}`);
-                };
-                target = resolveTarget();
-                const allowedTargets = new Set([target]);
-                const stack = [target];
-                while (stack.length > 0) {
-                  const current = stack.pop();
-                  const contexts = targetDefs[current]?.contexts || {};
-                  for (const contextValue of Object.values(contexts)) {
-                    const dependencyTarget = parseContextTarget(contextValue);
-                    if (!dependencyTarget || allowedTargets.has(dependencyTarget)) {
-                      continue;
-                    }
-                    if (!targetDefs[dependencyTarget]) {
-                      throw new Error(`Target ${current} uses unknown named context target ${dependencyTarget}`);
-                    }
-                    allowedTargets.add(dependencyTarget);
-                    stack.push(dependencyTarget);
-                  }
-                }
-                const unsupportedTargets = targets.filter(name => !allowedTargets.has(name));
-                if (unsupportedTargets.length > 0) {
-                  throw new Error(`Only one target can be built at once, found unsupported targets: ${unsupportedTargets.join(', ')}`);
-                }
+                BakeTargets.resolve(def, inpTarget);
+                target = inpTarget;
               });
             } catch (error) {
               core.setFailed(error);
@@ -591,14 +463,14 @@ jobs:
               if (!inpDistribute || platforms.length === 0) {
                 includes.push(withJobNamePrefix({
                   index: 0,
-                  runner: resolveRunner(runnerConfig)
+                  runner: RunnerMapping.resolve(runnerConfig)
                 }));
               } else {
                 platforms.forEach((platform, index) => {
                   includes.push(withJobNamePrefix({
                     index: index,
                     platform: platform,
-                    runner: resolveRunner(runnerConfig, platform)
+                    runner: RunnerMapping.resolve(runnerConfig, platform)
                   }));
                 });
               }
@@ -1346,24 +1218,9 @@ jobs:
             const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
             const inpMetaAnnotations = core.getMultilineInput('meta-annotations');
             
-            const toIndexAnnotation = annotation => {
-              const keyEnd = annotation.indexOf('=');
-              const rawKey = keyEnd === -1 ? annotation : annotation.substring(0, keyEnd);
-              const rawValue = keyEnd === -1 ? '' : annotation.substring(keyEnd);
-              const typeSeparator = rawKey.indexOf(':');
-              if (typeSeparator !== -1) {
-                const typeExpr = rawKey.substring(0, typeSeparator);
-                const key = rawKey.substring(typeSeparator + 1);
-                const hasKnownType = typeExpr.split(',').map(type => type.replace(/\[.*\]$/, '')).some(type => ['manifest', 'index', 'manifest-descriptor', 'index-descriptor'].includes(type));
-                if (hasKnownType) {
-                  return `index:${key}${rawValue}`;
-                }
-              }
-              return `index:${annotation}`;
-            };
             const indexAnnotations = [];
             if (inpSetMetaAnnotations && inpMetaAnnotations.length > 0) {
-              indexAnnotations.push(...inpMetaAnnotations.filter(annotation => annotation.length > 0).map(toIndexAnnotation));
+              indexAnnotations.push(...inpMetaAnnotations.filter(annotation => annotation.length > 0).map(ImageTools.toIndexAnnotation));
             }
             
             const digests = [];

@@ -161,126 +161,19 @@ jobs:
               return;
             }
 
-            let yaml;
-            try {
-              yaml = require('js-yaml');
-            } catch {
-              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
-            }
-
-            const fail = message => {
-              throw new Error(`Invalid registry-identities input: ${message}`);
-            };
-
-            const ensureObject = (value, path) => {
-              if (!value || typeof value !== 'object' || Array.isArray(value)) {
-                fail(`${path} must be an object`);
-              }
-            };
-
-            const requireString = (entry, key, path) => {
-              const value = entry[key];
-              if (typeof value !== 'string' || !value.trim()) {
-                fail(`${path}.${key} must be a non-empty string`);
-              }
-              return value.trim();
-            };
-
-            const optionalString = (entry, key, path, defaultValue) => {
-              if (!Object.prototype.hasOwnProperty.call(entry, key)) {
-                return defaultValue;
-              }
-              return requireString(entry, key, path);
-            };
+            const { RegistryIdentities } = require('@docker/github-builder-runtime/lib/github-builder/registry-identities');
 
             try {
-              let parsed;
-              try {
-                parsed = yaml.load(registryIdentities);
-              } catch (error) {
-                fail(error.message);
+              const { awsEcr, gcpWif, dockerhubOidc } = RegistryIdentities.parse(registryIdentities);
+              if (awsEcr) {
+                core.info(`Configured aws-ecr registry identity for ${awsEcr.registry}`);
               }
-              if (parsed === null || parsed === undefined) {
-                core.info('Registry identities input is empty after parsing; disabling registry identity outputs');
-                setEmptyOutputs();
-                return;
+              if (gcpWif) {
+                core.info(`Configured gcp-wif registry identity for ${gcpWif.registry}`);
               }
-
-              const entries = Array.isArray(parsed) ? parsed : [parsed];
-              if (entries.length === 0) {
-                core.info('No registry identity entries parsed; disabling registry identity outputs');
-                setEmptyOutputs();
-                return;
+              if (dockerhubOidc) {
+                core.info(`Configured dockerhub registry identity for ${dockerhubOidc.registry}`);
               }
-              core.info(`Validating ${entries.length} registry identity ${entries.length === 1 ? 'entry' : 'entries'}`);
-
-              let awsEcr;
-              let gcpWif;
-              let dockerhubOidc;
-              entries.forEach((entry, index) => {
-                const path = `registry-identities[${index}]`;
-                ensureObject(entry, path);
-                const type = requireString(entry, 'type', path);
-                switch (type) {
-                  case 'aws-ecr': {
-                    const allowedKeys = new Set(['type', 'registry', 'role-to-assume', 'region']);
-                    for (const key of Object.keys(entry)) {
-                      if (!allowedKeys.has(key)) {
-                        fail(`${path}.${key} is not supported for aws-ecr`);
-                      }
-                    }
-                    if (awsEcr) {
-                      fail('only one aws-ecr registry identity is supported');
-                    }
-                    awsEcr = {
-                      registry: requireString(entry, 'registry', path),
-                      roleToAssume: requireString(entry, 'role-to-assume', path),
-                      region: requireString(entry, 'region', path)
-                    };
-                    core.info(`Configured aws-ecr registry identity for ${awsEcr.registry}`);
-                    break;
-                  }
-                  case 'gcp-wif': {
-                    const allowedKeys = new Set(['type', 'registry', 'workload_identity_provider', 'service_account', 'project_id']);
-                    for (const key of Object.keys(entry)) {
-                      if (!allowedKeys.has(key)) {
-                        fail(`${path}.${key} is not supported for gcp-wif`);
-                      }
-                    }
-                    if (gcpWif) {
-                      fail('only one gcp-wif registry identity is supported');
-                    }
-                    gcpWif = {
-                      registry: requireString(entry, 'registry', path),
-                      workloadIdentityProvider: requireString(entry, 'workload_identity_provider', path),
-                      serviceAccount: requireString(entry, 'service_account', path),
-                      projectId: optionalString(entry, 'project_id', path, '')
-                    };
-                    core.info(`Configured gcp-wif registry identity for ${gcpWif.registry}`);
-                    break;
-                  }
-                  case 'dockerhub': {
-                    const allowedKeys = new Set(['type', 'registry', 'username', 'connection_id']);
-                    for (const key of Object.keys(entry)) {
-                      if (!allowedKeys.has(key)) {
-                        fail(`${path}.${key} is not supported for dockerhub`);
-                      }
-                    }
-                    if (dockerhubOidc) {
-                      fail('only one dockerhub registry identity is supported');
-                    }
-                    dockerhubOidc = {
-                      registry: optionalString(entry, 'registry', path, 'docker.io'),
-                      username: requireString(entry, 'username', path),
-                      connectionID: requireString(entry, 'connection_id', path)
-                    };
-                    core.info(`Configured dockerhub registry identity for ${dockerhubOidc.registry}`);
-                    break;
-                  }
-                  default:
-                    fail(`${path}.type has unsupported provider ${type}`);
-                }
-              });
 
               core.setOutput('aws-ecr-enabled', awsEcr ? 'true' : 'false');
               core.setOutput('aws-ecr-registry', awsEcr?.registry || '');
