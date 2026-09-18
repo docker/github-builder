@@ -18,6 +18,7 @@ ___
   * [Outputs](#outputs-1)
 * [Notes](#notes)
   * [BuildKit proxy network](#buildkit-proxy-network)
+  * [Build secrets](#build-secrets)
   * [Signed GitHub Actions cache](#signed-github-actions-cache)
   * [Registry identities](#registry-identities)
     * [Docker Hub OIDC](#docker-hub-oidc)
@@ -260,6 +261,7 @@ jobs:
 | Name             | Default               | Description                                                                    |
 |------------------|-----------------------|--------------------------------------------------------------------------------|
 | `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
+| `build-secrets`  |                       | YAML object mapping BuildKit secret IDs to secret values                       |
 | `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
 
 ### Outputs
@@ -370,10 +372,11 @@ jobs:
 
 ### Secrets
 
-| Name             | Default               | Description                                                                    |
-|------------------|-----------------------|--------------------------------------------------------------------------------|
-| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output) |
-| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context       |
+| Name             | Default               | Description                                                                             |
+|------------------|-----------------------|-----------------------------------------------------------------------------------------|
+| `registry-auths` |                       | Raw authentication to registries, defined as YAML objects (for `image` output)          |
+| `build-secrets`  |                       | YAML object mapping BuildKit secret IDs to values, with optional nested target mappings |
+| `github-token`   | `${{ github.token }}` | GitHub Token used to authenticate against the repository for Git context                |
 
 ### Outputs
 
@@ -422,6 +425,61 @@ BuildKit does not chain the internal proxy through a caller-provided upstream
 proxy. Enabling `buildkit-proxy-network` replaces Docker's predefined proxy
 build arguments for affected `RUN` operations and can bypass an application-level
 organizational proxy. See BuildKit's [proxy network documentation](https://github.com/moby/buildkit/blob/master/docs/proxy.md).
+
+### Build secrets
+
+Both workflows accept `build-secrets` as a YAML object mapping BuildKit secret
+IDs to values, not caller workspace paths. Bake requires matching secrets to be
+declared in `docker-bake.hcl`:
+
+```hcl
+target "default" {
+  secret = [
+    "id=npm.token,env=NPM_TOKEN",
+    "id=aws.credentials,src=./aws-credentials",
+    "id=inline_config,env=INLINE_CONFIG",
+  ]
+}
+```
+
+Then pass their values to the reusable workflow:
+
+```yaml
+secrets:
+  build-secrets: |
+    npm.token: ${{ toJSON(secrets.NPM_TOKEN) }}
+    aws.credentials: ${{ toJSON(secrets.AWS_CREDENTIALS) }}
+    inline_config: |
+      first line
+      second line
+```
+
+Use `toJSON(...)` for GitHub secrets to preserve multiline values and YAML-sensitive
+characters. For literal values with trailing blank lines, use `|+` on both the
+outer `build-secrets` block and the inner value.
+
+In Bake, string values apply to the selected `target`. Nested mappings explicitly
+select a target in the resolved build graph. For the same definition above:
+
+```yaml
+with:
+  target: default
+secrets:
+  build-secrets: |
+    npm.token: ${{ toJSON(secrets.NPM_TOKEN) }}
+    default:
+      aws.credentials: ${{ toJSON(secrets.AWS_CREDENTIALS) }}
+```
+
+Dots are always part of the secret ID, never target separators. Nested target
+mappings are only supported by the bake workflow. IDs cannot be empty or contain
+line breaks or `=`; the build workflow also rejects commas, double quotes, and
+leading or trailing whitespace.
+
+Values are passed through private temporary files, not the job environment.
+For Bake, these override the declared file or environment sources without adding
+new secrets. Files are created after registry authentication and cleaned up after
+the build, including on failure. Abrupt runner termination can prevent cleanup.
 
 ### Signed GitHub Actions cache
 

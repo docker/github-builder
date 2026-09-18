@@ -42,6 +42,16 @@ target "proxy-network" {
   dockerfile = "proxy-network.Dockerfile"
 }
 
+target "foosec" {
+  dockerfile = "secret.Dockerfile"
+  secret = [
+    "id=fixture.plain,env=FIXTURE_PLAIN",
+    "id=fixture.json,src=./fixture-json.txt",
+    "id=fixture_fuu,env=FIXTURE_FUU",
+    "id=fixture_keep,env=FIXTURE_KEEP",
+  ]
+}
+
 target "go-cross-with-contexts" {
   inherits = ["go-cross"]
   contexts = {

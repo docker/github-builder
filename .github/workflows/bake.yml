@@ -149,6 +149,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs to values, with optional nested target mappings"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -215,6 +218,7 @@ jobs:
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
+      targets: ${{ steps.set.outputs.targets }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
       proxyNetwork: ${{ steps.set.outputs.proxyNetwork }}
     steps:
@@ -490,7 +494,7 @@ jobs:
               }
             );
             await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
             });
 
             const metaImages = inpMetaImages.map(image => image.toLowerCase());
@@ -504,9 +508,15 @@ jobs:
             try {
               await core.group(`Validating definition`, async () => {
                 const bake = new Bake();
+                // Resolve the graph without local secret files. The build job validates
+                // secrets after applying the workflow-provided source overrides.
+                const validationOverrides = inpSet.filter(override => {
+                  const key = override.split('=', 1)[0].split('.')[1];
+                  return !['secret', 'secrets', 'secrets+'].includes(key);
+                });
                 def = await bake.getDefinition({
                   files: inpFiles,
-                  overrides: inpSet,
+                  overrides: [...validationOverrides, '*.secrets='],
                   sbom: inpSbom ? `generator=${inpSbomImage}` : 'false',
                   source: bakeSource,
                   targets: [inpTarget]
@@ -556,6 +566,7 @@ jobs:
                 if (unsupportedTargets.length > 0) {
                   throw new Error(`Only one target can be built at once, found unsupported targets: ${unsupportedTargets.join(', ')}`);
                 }
+                core.setOutput('targets', JSON.stringify([...allowedTargets]));
               });
             } catch (error) {
               core.setFailed(error);
@@ -839,6 +850,57 @@ jobs:
               `${containerName}:/usr/bin/cosign`
             ]);
       -
+        name: Configure AWS credentials
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
+          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
+      -
+        name: Login to Amazon ECR
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
+      -
+        name: Authenticate to Google Cloud
+        id: gcp-wif-auth
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
+      -
+        name: Login to Docker Hub with OIDC
+        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
+      -
+        name: Login to registry
+        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
         name: Prepare
         id: prepare
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -849,6 +911,8 @@ jobs:
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
+          INPUT_TARGETS: ${{ needs.prepare.outputs.targets }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_FILES: ${{ inputs.files }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -865,15 +929,23 @@ jobs:
           INPUT_BAKE-FILE-TAGS: ${{ steps.meta.outputs.bake-file-tags }}
           INPUT_BAKE-FILE-ANNOTATIONS: ${{ steps.meta.outputs.bake-file-annotations }}
           INPUT_BAKE-FILE-LABELS: ${{ steps.meta.outputs.bake-file-labels }}
-          INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
           INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
+            const fs = require('fs');
             const os = require('os');
+            const path = require('path');
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
+
+            let yaml;
+            try {
+              yaml = require('js-yaml');
+            } catch {
+              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
+            }
+
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -884,6 +956,8 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets', {trimWhitespace: false});
+            const inpTargets = core.getInput('targets');
             const inpContext = core.getInput('context');
             const inpFiles = Util.getInputList('files');
             const inpOutput = core.getInput('output');
@@ -892,7 +966,6 @@ jobs:
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpTarget = core.getInput('target');
             const inpVars = Util.getInputList('vars');
-            const inpGitHubToken = core.getInput('github-token');
             const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
 
             const inpMetaImages = core.getMultilineInput('meta-images');
@@ -909,6 +982,46 @@ jobs:
               tags: inpMetaTags
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
+
+            const isInputKeySafe = value => value && !/[\r\n=]/.test(value);
+            const parseBuildSecrets = value => {
+              if (!value.trim()) {
+                return [];
+              }
+              let parsed;
+              try {
+                parsed = yaml.load(value, {schema: yaml.FAILSAFE_SCHEMA});
+              } catch (err) {
+                const location = err.mark ? ` at line ${err.mark.line + 1}, column ${err.mark.column + 1}` : '';
+                throw new Error(`Failed to parse build-secrets YAML${location}`);
+              }
+              if (!parsed) {
+                return [];
+              }
+              if (Array.isArray(parsed) || typeof parsed !== 'object') {
+                throw new Error('build-secrets must be a YAML object');
+              }
+              return Object.entries(parsed).flatMap(([key, value]) => {
+                if (typeof value !== 'string' && (!value || typeof value !== 'object' || Array.isArray(value))) {
+                  throw new Error('build-secrets entries must be secret strings or target mappings');
+                }
+                const target = typeof value === 'string' ? inpTarget : key;
+                const entries = typeof value === 'string' ? [[key, value]] : Object.entries(value);
+                if (!isInputKeySafe(target)) {
+                  throw new Error('Build secret targets must not be empty or contain line breaks or "="');
+                }
+                return entries.map(([id, secret]) => {
+                  if (!isInputKeySafe(id)) {
+                    throw new Error('Build secret IDs must not be empty or contain line breaks or "="');
+                  }
+                  if (typeof secret !== 'string') {
+                    throw new Error('build-secrets values within target mappings must be strings');
+                  }
+                  core.setSecret(secret);
+                  return {target, id, secret};
+                });
+              });
+            };
             
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
@@ -927,7 +1040,29 @@ jobs:
               core.info(sbom);
               core.setOutput('sbom', sbom);
             });
-            
+
+            let buildSecrets;
+            try {
+              buildSecrets = parseBuildSecrets(inpBuildSecrets);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+
+            let targets;
+            try {
+              targets = JSON.parse(inpTargets || '[]');
+              const allowedTargets = new Set(targets);
+              for (const {target} of buildSecrets) {
+                if (!allowedTargets.has(target)) {
+                  throw new Error(`Build secret target "${target}" is not part of the resolved Bake definition`);
+                }
+              }
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+
             const envs = Object.assign({},
               inpVars ? inpVars.reduce((acc, curr) => {
                 const idx = curr.indexOf('=');
@@ -937,12 +1072,26 @@ jobs:
                 return acc;
               }, {}) : {},
               {
-                BUILDKIT_MULTI_PLATFORM: '1',
-                BUILDX_BAKE_GIT_AUTH_TOKEN: inpGitHubToken
+                BUILDKIT_MULTI_PLATFORM: '1'
               }
             );
+
+            // Git authentication is supplied directly to the Bake action.
+            delete envs.BUILDX_BAKE_GIT_AUTH_TOKEN;
+
+            const secretOverrides = [];
+            if (buildSecrets.length > 0) {
+              const secretDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'build-secrets-'));
+              core.setOutput('secret-dir', secretDir);
+              buildSecrets.forEach(({target, id, secret}, index) => {
+                const secretFile = path.join(secretDir, String(index));
+                fs.writeFileSync(secretFile, secret, {mode: 0o600});
+                secretOverrides.push(`${target}.secret.${id}=src=${secretFile}`);
+              });
+            }
+
             await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
               core.setOutput('envs', JSON.stringify(envs));
             });
             
@@ -1006,60 +1155,10 @@ jobs:
                 bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix}`);
                 bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix},mode=${inpCacheMode}`);
               }
+              bakeOverrides.push(...secretOverrides);
               core.info(JSON.stringify(bakeOverrides, null, 2));
               core.setOutput('overrides', bakeOverrides.join(os.EOL));
             });
-      -
-        name: Configure AWS credentials
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
-        with:
-          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
-          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
-      -
-        name: Login to Amazon ECR
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
-      -
-        name: Authenticate to Google Cloud
-        id: gcp-wif-auth
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          token_format: access_token
-          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
-          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
-          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
-          create_credentials_file: false
-          export_environment_variables: false
-      -
-        name: Login to Google Artifact Registry
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
-              username: oauth2accesstoken
-              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
-      -
-        name: Login to Docker Hub with OIDC
-        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        env:
-          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
-              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
-      -
-        name: Login to registry
-        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: ${{ secrets.registry-auths }}
       -
         name: Build
         id: bake
@@ -1070,7 +1169,18 @@ jobs:
           targets: ${{ steps.prepare.outputs.target }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
+          github-token: ${{ secrets.github-token || github.token }}
         env: ${{ fromJson(steps.prepare.outputs.envs || '{}') }}
+      -
+        name: Remove build secrets
+        if: ${{ always() && steps.prepare.outputs.secret-dir != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_SECRET-DIR: ${{ steps.prepare.outputs.secret-dir }}
+        with:
+          script: |
+            const fs = require('fs');
+            fs.rmSync(core.getInput('secret-dir', {required: true}), {recursive: true, force: true});
       -
         name: Get image digest
         id: get-image-digest

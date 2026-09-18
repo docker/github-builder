@@ -160,6 +160,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs to secret values"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -737,6 +740,57 @@ jobs:
               `${containerName}:/usr/bin/cosign`
             ]);
       -
+        name: Configure AWS credentials
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
+          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
+      -
+        name: Login to Amazon ECR
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
+      -
+        name: Authenticate to Google Cloud
+        id: gcp-wif-auth
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
+      -
+        name: Login to Docker Hub with OIDC
+        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
+      -
+        name: Login to registry
+        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
         name: Prepare
         id: prepare
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -751,6 +805,7 @@ jobs:
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
           INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
           INPUT_LABELS: ${{ inputs.labels }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -767,10 +822,19 @@ jobs:
           INPUT_META-LABELS: ${{ steps.meta.outputs.labels }}
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
+
+            let yaml;
+            try {
+              yaml = require('js-yaml');
+            } catch {
+              yaml = require('@docker/github-builder-runtime/node_modules/js-yaml');
+            }
+
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -784,6 +848,7 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets', {trimWhitespace: false});
             const inpContext = core.getInput('context');
             const inpLabels = core.getInput('labels');
             const inpOutput = core.getInput('output');
@@ -807,6 +872,40 @@ jobs:
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
             
+            // IDs pass through the action's CSV list parser and Buildx's secret attributes.
+            const isInputKeySafe = value => value && value === value.trim() && !/[\r\n=,"]/.test(value);
+            const parseBuildSecrets = value => {
+              if (!value.trim()) {
+                return {};
+              }
+              let parsed;
+              try {
+                parsed = yaml.load(value, {schema: yaml.FAILSAFE_SCHEMA});
+              } catch (err) {
+                const location = err.mark ? ` at line ${err.mark.line + 1}, column ${err.mark.column + 1}` : '';
+                throw new Error(`Failed to parse build-secrets YAML${location}`);
+              }
+              if (!parsed) {
+                return {};
+              }
+              if (Array.isArray(parsed) || typeof parsed !== 'object') {
+                throw new Error('build-secrets must be a YAML object');
+              }
+              for (const [id, secret] of Object.entries(parsed)) {
+                if (!isInputKeySafe(id)) {
+                  throw new Error('Build secret IDs must not be empty or contain surrounding whitespace, line breaks, commas, double quotes or "="');
+                }
+                if (id === 'GIT_AUTH_TOKEN') {
+                  throw new Error('Build secret id "GIT_AUTH_TOKEN" is reserved for Git context authentication');
+                }
+                if (typeof secret !== 'string') {
+                  throw new Error(`build-secrets value for "${id}" must be a string`);
+                }
+                core.setSecret(secret);
+              }
+              return parsed;
+            };
+
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
@@ -864,6 +963,25 @@ jobs:
             }
             core.setOutput('labels', labels.join('\n'));
             core.setOutput('build-args', buildArgs);
+
+            let buildSecrets;
+            try {
+              buildSecrets = parseBuildSecrets(inpBuildSecrets);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+            const secretFiles = [];
+            if (Object.keys(buildSecrets).length > 0) {
+              const secretDir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'build-secrets-'));
+              core.setOutput('secret-dir', secretDir);
+              Object.entries(buildSecrets).forEach(([id, secret], index) => {
+                const secretFile = path.join(secretDir, String(index));
+                fs.writeFileSync(secretFile, secret, {mode: 0o600});
+                secretFiles.push(`${id}=${secretFile}`);
+              });
+            }
+            core.setOutput('secret-files', secretFiles.join('\n'));
             
             if (GitHub.context.payload.repository?.private ?? false) {
               // if this is a private repository, we set min provenance mode
@@ -872,57 +990,6 @@ jobs:
               // for a public repository, we set max provenance mode
               core.setOutput('provenance', Build.resolveProvenanceAttrs(`mode=max,version=v1`));
             }
-      -
-        name: Configure AWS credentials
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
-        with:
-          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
-          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
-      -
-        name: Login to Amazon ECR
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
-      -
-        name: Authenticate to Google Cloud
-        id: gcp-wif-auth
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          token_format: access_token
-          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
-          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
-          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
-          create_credentials_file: false
-          export_environment_variables: false
-      -
-        name: Login to Google Artifact Registry
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
-              username: oauth2accesstoken
-              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
-      -
-        name: Login to Docker Hub with OIDC
-        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        env:
-          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
-              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
-      -
-        name: Login to registry
-        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: ${{ secrets.registry-auths }}
       -
         name: Build
         id: build
@@ -940,12 +1007,23 @@ jobs:
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
+          secret-files: ${{ steps.prepare.outputs.secret-files }}
           shm-size: ${{ inputs.shm-size }}
           target: ${{ inputs.target }}
           ulimit: ${{ inputs.ulimit }}
         env:
           BUILDKIT_MULTI_PLATFORM: 1
           GIT_AUTH_TOKEN: ${{ secrets.github-token || github.token }}
+      -
+        name: Remove build secrets
+        if: ${{ always() && steps.prepare.outputs.secret-dir != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_SECRET-DIR: ${{ steps.prepare.outputs.secret-dir }}
+        with:
+          script: |
+            const fs = require('fs');
+            fs.rmSync(core.getInput('secret-dir', {required: true}), {recursive: true, force: true});
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
