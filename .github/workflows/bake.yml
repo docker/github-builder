@@ -149,6 +149,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs to values, with optional nested target mappings"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -215,6 +218,7 @@ jobs:
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
       privateRepo: ${{ steps.set.outputs.privateRepo }}
+      targets: ${{ steps.set.outputs.targets }}
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
       proxyNetwork: ${{ steps.set.outputs.proxyNetwork }}
     steps:
@@ -400,7 +404,7 @@ jobs:
               }
             );
             await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
             });
 
             const metaImages = inpMetaImages.map(image => image.toLowerCase());
@@ -414,9 +418,15 @@ jobs:
             try {
               await core.group(`Validating definition`, async () => {
                 const bake = new Bake();
+                // Resolve the graph without local secret files. The build job validates
+                // secrets after applying the workflow-provided source overrides.
+                const validationOverrides = inpSet.filter(override => {
+                  const key = override.split('=', 1)[0].split('.')[1];
+                  return !['secret', 'secrets', 'secrets+'].includes(key);
+                });
                 def = await bake.getDefinition({
                   files: inpFiles,
-                  overrides: inpSet,
+                  overrides: [...validationOverrides, '*.secrets='],
                   sbom: inpSbom ? `generator=${inpSbomImage}` : 'false',
                   source: bakeSource,
                   targets: [inpTarget]
@@ -426,8 +436,9 @@ jobs:
                 if (!def) {
                   throw new Error('Bake definition not set');
                 }
-                BakeTargets.resolve(def, inpTarget);
+                const targets = BakeTargets.resolve(def, inpTarget);
                 target = inpTarget;
+                core.setOutput('targets', JSON.stringify(targets));
               });
             } catch (error) {
               core.setFailed(error);
@@ -711,177 +722,6 @@ jobs:
               `${containerName}:/usr/bin/cosign`
             ]);
       -
-        name: Prepare
-        id: prepare
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          INPUT_PLATFORM: ${{ matrix.platform }}
-          INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
-          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
-          INPUT_CACHE: ${{ inputs.cache }}
-          INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
-          INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
-          INPUT_CONTEXT: ${{ inputs.context }}
-          INPUT_FILES: ${{ inputs.files }}
-          INPUT_OUTPUT: ${{ inputs.output }}
-          INPUT_PUSH: ${{ inputs.push }}
-          INPUT_SBOM: ${{ inputs.sbom }}
-          INPUT_SET: ${{ inputs.set }}
-          INPUT_TARGET: ${{ inputs.target }}
-          INPUT_VARS: ${{ inputs.vars }}
-          INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
-          INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
-          INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
-          INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
-          INPUT_SET-META-LABELS: ${{ inputs.set-meta-labels }}
-          INPUT_BAKE-FILE-TAGS: ${{ steps.meta.outputs.bake-file-tags }}
-          INPUT_BAKE-FILE-ANNOTATIONS: ${{ steps.meta.outputs.bake-file-annotations }}
-          INPUT_BAKE-FILE-LABELS: ${{ steps.meta.outputs.bake-file-labels }}
-          INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
-          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
-        with:
-          script: |
-            const os = require('os');
-            const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
-            const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
-            const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
-            const inpPlatform = core.getInput('platform');
-            const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
-            core.setOutput('platform-pair-suffix', platformPairSuffix);
-            
-            const inpSbomImage = core.getInput('sbom-image');
-            const inpLocalExportDir = core.getInput('local-export-dir');
-            
-            const inpCache = core.getBooleanInput('cache');
-            const inpCacheScope = core.getInput('cache-scope');
-            const inpCacheMode = core.getInput('cache-mode');
-            const inpContext = core.getInput('context');
-            const inpFiles = Util.getInputList('files');
-            const inpOutput = core.getInput('output');
-            const inpPush = core.getBooleanInput('push');
-            const inpSbom = core.getBooleanInput('sbom');
-            const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
-            const inpTarget = core.getInput('target');
-            const inpVars = Util.getInputList('vars');
-            const inpGitHubToken = core.getInput('github-token');
-            const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
-
-            const inpMetaImages = core.getMultilineInput('meta-images');
-            const inpMetaVersion = core.getInput('meta-version');
-            const inpMetaTags = core.getMultilineInput('meta-tags');
-            const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
-            const inpSetMetaLabels = core.getBooleanInput('set-meta-labels');
-            const inpBakeFileTags = core.getInput('bake-file-tags');
-            const inpBakeFileAnnotations = core.getInput('bake-file-annotations');
-            const inpBakeFileLabels = core.getInput('bake-file-labels');
-
-            const meta = {
-              version: inpMetaVersion,
-              tags: inpMetaTags
-            };
-            const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
-            
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
-            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
-            await core.group(`Set source output`, async () => {
-              core.info(bakeSource);
-              core.setOutput('source', bakeSource);
-            });
-            
-            await core.group(`Set target output`, async () => {
-              core.info(inpTarget);
-              core.setOutput('target', inpTarget);
-            });
-            
-            const sbom = inpSbom ? `generator=${inpSbomImage}` : 'false';
-            await core.group(`Set sbom`, async () => {
-              core.info(sbom);
-              core.setOutput('sbom', sbom);
-            });
-            
-            const envs = Object.assign({},
-              inpVars ? inpVars.reduce((acc, curr) => {
-                const idx = curr.indexOf('=');
-                if (idx !== -1) {
-                  acc[curr.substring(0, idx)] = curr.substring(idx + 1);
-                }
-                return acc;
-              }, {}) : {},
-              {
-                BUILDKIT_MULTI_PLATFORM: '1',
-                BUILDX_BAKE_GIT_AUTH_TOKEN: inpGitHubToken
-              }
-            );
-            await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(envs, null, 2));
-              core.setOutput('envs', JSON.stringify(envs));
-            });
-            
-            let bakeFiles = inpFiles;
-            await core.group(`Set bake files`, async () => {
-              if (bakeFiles.length === 0) {
-                bakeFiles = ['docker-bake.hcl'];
-              }
-              if (inpBakeFileTags) {
-                bakeFiles.push(`cwd://${inpBakeFileTags}`);
-              }
-              if (inpSetMetaAnnotations && inpBakeFileAnnotations) {
-                bakeFiles.push(`cwd://${inpBakeFileAnnotations}`);
-              }
-              if (inpSetMetaLabels && inpBakeFileLabels) {
-                bakeFiles.push(`cwd://${inpBakeFileLabels}`);
-              }
-              core.info(JSON.stringify(bakeFiles, null, 2));
-              core.setOutput('files', bakeFiles.join(os.EOL));
-            });
-            
-            let outputOverride = '';
-            switch (inpOutput) {
-              case 'image':
-                if (inpMetaImages.length == 0) {
-                  core.setFailed('meta-images is required when output is image');
-                  return;
-                }
-                outputOverride = `*.output=type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`;
-                break;
-              case 'local':
-                outputOverride = `*.output=type=local,platform-split=true,dest=${inpLocalExportDir}`;
-                break;
-              default:
-                core.setFailed(`Invalid output: ${inpOutput}`);
-                return;
-            }
-            
-            let bakeOverrides = [];
-            try {
-              bakeOverrides = inpSet.map(override => renderTemplate(override));
-            } catch (err) {
-              core.setFailed(`Failed to render Handlebars template: ${err.message}`);
-              return;
-            }
-            await core.group(`Set bake overrides`, async () => {
-              bakeOverrides.push(outputOverride);
-              bakeOverrides.push('*.tags=');
-              if (GitHub.context.payload.repository?.private ?? false) {
-                // if this is a private repository, we set min provenance mode
-                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=min,version=v1')}`);
-              } else {
-                // for a public repository, we set max provenance mode
-                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=max,version=v1')}`);
-              }
-              if (inpPlatform) {
-                bakeOverrides.push(`*.platform=${inpPlatform}`);
-              }
-              if (inpCache) {
-                const proxyNetworkSuffix = inpBuildkitProxyNetwork ? '-proxy-network' : '';
-                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix}`);
-                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix},mode=${inpCacheMode}`);
-              }
-              core.info(JSON.stringify(bakeOverrides, null, 2));
-              core.setOutput('overrides', bakeOverrides.join(os.EOL));
-            });
-      -
         name: Configure AWS credentials
         if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
@@ -958,6 +798,193 @@ jobs:
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
+        name: Prepare
+        id: prepare
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_PLATFORM: ${{ matrix.platform }}
+          INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
+          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_CACHE: ${{ inputs.cache }}
+          INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
+          INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
+          INPUT_TARGETS: ${{ needs.prepare.outputs.targets }}
+          INPUT_CONTEXT: ${{ inputs.context }}
+          INPUT_FILES: ${{ inputs.files }}
+          INPUT_OUTPUT: ${{ inputs.output }}
+          INPUT_PUSH: ${{ inputs.push }}
+          INPUT_SBOM: ${{ inputs.sbom }}
+          INPUT_SET: ${{ inputs.set }}
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_VARS: ${{ inputs.vars }}
+          INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
+          INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
+          INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
+          INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
+          INPUT_SET-META-LABELS: ${{ inputs.set-meta-labels }}
+          INPUT_BAKE-FILE-TAGS: ${{ steps.meta.outputs.bake-file-tags }}
+          INPUT_BAKE-FILE-ANNOTATIONS: ${{ steps.meta.outputs.bake-file-annotations }}
+          INPUT_BAKE-FILE-LABELS: ${{ steps.meta.outputs.bake-file-labels }}
+          INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
+        with:
+          script: |
+            const os = require('os');
+            const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
+            const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
+            const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { Util } = require('@docker/github-builder-runtime/lib/util');
+
+            const inpPlatform = core.getInput('platform');
+            const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
+            core.setOutput('platform-pair-suffix', platformPairSuffix);
+            
+            const inpSbomImage = core.getInput('sbom-image');
+            const inpLocalExportDir = core.getInput('local-export-dir');
+            
+            const inpCache = core.getBooleanInput('cache');
+            const inpCacheScope = core.getInput('cache-scope');
+            const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets', {trimWhitespace: false});
+            const inpTargets = core.getInput('targets');
+            const inpContext = core.getInput('context');
+            const inpFiles = Util.getInputList('files');
+            const inpOutput = core.getInput('output');
+            const inpPush = core.getBooleanInput('push');
+            const inpSbom = core.getBooleanInput('sbom');
+            const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
+            const inpTarget = core.getInput('target');
+            const inpVars = Util.getInputList('vars');
+            const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
+
+            const inpMetaImages = core.getMultilineInput('meta-images');
+            const inpMetaVersion = core.getInput('meta-version');
+            const inpMetaTags = core.getMultilineInput('meta-tags');
+            const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
+            const inpSetMetaLabels = core.getBooleanInput('set-meta-labels');
+            const inpBakeFileTags = core.getInput('bake-file-tags');
+            const inpBakeFileAnnotations = core.getInput('bake-file-annotations');
+            const inpBakeFileLabels = core.getInput('bake-file-labels');
+
+            const meta = {
+              version: inpMetaVersion,
+              tags: inpMetaTags
+            };
+            const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
+
+            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
+            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
+            await core.group(`Set source output`, async () => {
+              core.info(bakeSource);
+              core.setOutput('source', bakeSource);
+            });
+            
+            await core.group(`Set target output`, async () => {
+              core.info(inpTarget);
+              core.setOutput('target', inpTarget);
+            });
+            
+            const sbom = inpSbom ? `generator=${inpSbomImage}` : 'false';
+            await core.group(`Set sbom`, async () => {
+              core.info(sbom);
+              core.setOutput('sbom', sbom);
+            });
+
+            let buildSecrets;
+            try {
+              buildSecrets = BuildSecrets.prepareBake(inpBuildSecrets, inpTarget, JSON.parse(inpTargets || '[]'));
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+            core.setOutput('secret-dir', buildSecrets.directory);
+
+            const envs = Object.assign({},
+              inpVars ? inpVars.reduce((acc, curr) => {
+                const idx = curr.indexOf('=');
+                if (idx !== -1) {
+                  acc[curr.substring(0, idx)] = curr.substring(idx + 1);
+                }
+                return acc;
+              }, {}) : {},
+              {
+                BUILDKIT_MULTI_PLATFORM: '1'
+              }
+            );
+
+            // Git authentication is supplied directly to the Bake action.
+            delete envs.BUILDX_BAKE_GIT_AUTH_TOKEN;
+
+            await core.group(`Set envs`, async () => {
+              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
+              core.setOutput('envs', JSON.stringify(envs));
+            });
+            
+            let bakeFiles = inpFiles;
+            await core.group(`Set bake files`, async () => {
+              if (bakeFiles.length === 0) {
+                bakeFiles = ['docker-bake.hcl'];
+              }
+              if (inpBakeFileTags) {
+                bakeFiles.push(`cwd://${inpBakeFileTags}`);
+              }
+              if (inpSetMetaAnnotations && inpBakeFileAnnotations) {
+                bakeFiles.push(`cwd://${inpBakeFileAnnotations}`);
+              }
+              if (inpSetMetaLabels && inpBakeFileLabels) {
+                bakeFiles.push(`cwd://${inpBakeFileLabels}`);
+              }
+              core.info(JSON.stringify(bakeFiles, null, 2));
+              core.setOutput('files', bakeFiles.join(os.EOL));
+            });
+            
+            let outputOverride = '';
+            switch (inpOutput) {
+              case 'image':
+                if (inpMetaImages.length == 0) {
+                  core.setFailed('meta-images is required when output is image');
+                  return;
+                }
+                outputOverride = `*.output=type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`;
+                break;
+              case 'local':
+                outputOverride = `*.output=type=local,platform-split=true,dest=${inpLocalExportDir}`;
+                break;
+              default:
+                core.setFailed(`Invalid output: ${inpOutput}`);
+                return;
+            }
+            
+            let bakeOverrides = [];
+            try {
+              bakeOverrides = inpSet.map(override => renderTemplate(override));
+            } catch (err) {
+              core.setFailed(`Failed to render Handlebars template: ${err.message}`);
+              return;
+            }
+            await core.group(`Set bake overrides`, async () => {
+              bakeOverrides.push(outputOverride);
+              bakeOverrides.push('*.tags=');
+              if (GitHub.context.payload.repository?.private ?? false) {
+                // if this is a private repository, we set min provenance mode
+                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=min,version=v1')}`);
+              } else {
+                // for a public repository, we set max provenance mode
+                bakeOverrides.push(`*.attest=type=provenance,${Build.resolveProvenanceAttrs('mode=max,version=v1')}`);
+              }
+              if (inpPlatform) {
+                bakeOverrides.push(`*.platform=${inpPlatform}`);
+              }
+              if (inpCache) {
+                const proxyNetworkSuffix = inpBuildkitProxyNetwork ? '-proxy-network' : '';
+                bakeOverrides.push(`*.cache-from=type=gha,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix}`);
+                bakeOverrides.push(`*.cache-to=type=gha,ignore-error=true,scope=${inpCacheScope || inpTarget}${platformPairSuffix}${proxyNetworkSuffix},mode=${inpCacheMode}`);
+              }
+              bakeOverrides.push(...buildSecrets.inputs);
+              core.info(JSON.stringify(bakeOverrides, null, 2));
+              core.setOutput('overrides', bakeOverrides.join(os.EOL));
+            });
+      -
         name: Build
         id: bake
         uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
@@ -967,7 +994,18 @@ jobs:
           targets: ${{ steps.prepare.outputs.target }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
+          github-token: ${{ secrets.github-token || github.token }}
         env: ${{ fromJson(steps.prepare.outputs.envs || '{}') }}
+      -
+        name: Remove build secrets
+        if: ${{ always() && steps.prepare.outputs.secret-dir != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_SECRET-DIR: ${{ steps.prepare.outputs.secret-dir }}
+        with:
+          script: |
+            const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
+            BuildSecrets.cleanup(core.getInput('secret-dir', {required: true}));
       -
         name: Get image digest
         id: get-image-digest

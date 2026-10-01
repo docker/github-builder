@@ -160,6 +160,9 @@ on:
       registry-auths:
         description: "Raw authentication to registries, defined as YAML objects (for image output)"
         required: false
+      build-secrets:
+        description: "YAML object mapping BuildKit secret IDs to secret values"
+        required: false
       github-token:
         description: "GitHub Token used to authenticate against the repository for Git context"
         required: false
@@ -646,6 +649,82 @@ jobs:
               `${containerName}:/usr/bin/cosign`
             ]);
       -
+        name: Configure AWS credentials
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
+          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
+      -
+        name: Login to Amazon ECR
+        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        env:
+          AWS_ACCOUNT_IDS: ${{ needs.registry-identities.outputs.aws-ecr-account-ids }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
+      -
+        name: Authenticate to Google Cloud
+        id: gcp-wif-auth
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry
+        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
+      -
+        name: Login to Docker Hub with OIDC
+        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
+      -
+        name: Authenticate to Azure
+        if: ${{ needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ needs.registry-identities.outputs.azure-acr-client-id }}
+          tenant-id: ${{ needs.registry-identities.outputs.azure-acr-tenant-id }}
+          subscription-id: ${{ needs.registry-identities.outputs.azure-acr-subscription-id }}
+      -
+        name: Login to Azure Container Registry
+        if: ${{ needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
+        env:
+          ACR_REGISTRY: ${{ needs.registry-identities.outputs.azure-acr-registry }}
+          AZURE_CORE_OUTPUT: none
+        run: az acr login --name "${ACR_REGISTRY%.azurecr.io}"
+      -
+        name: Set up chainctl
+        if: ${{ needs.registry-identities.outputs.chainguard-enabled == 'true' }}
+        uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
+        with:
+          identity: ${{ needs.registry-identities.outputs.chainguard-identity }}
+          apk-host: ${{ needs.registry-identities.outputs.chainguard-apk-host }}
+          libraries-host: ${{ needs.registry-identities.outputs.chainguard-libraries-host }}
+      -
+        name: Login to registry
+        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry-auth: ${{ secrets.registry-auths }}
+      -
         name: Prepare
         id: prepare
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -660,6 +739,7 @@ jobs:
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
           INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
+          INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
           INPUT_LABELS: ${{ inputs.labels }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_OUTPUT: ${{ inputs.output }}
@@ -677,9 +757,10 @@ jobs:
         with:
           script: |
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
+            const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
-            
+
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -693,6 +774,7 @@ jobs:
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
             const inpCacheMode = core.getInput('cache-mode');
+            const inpBuildSecrets = core.getInput('build-secrets', {trimWhitespace: false});
             const inpContext = core.getInput('context');
             const inpLabels = core.getInput('labels');
             const inpOutput = core.getInput('output');
@@ -773,6 +855,16 @@ jobs:
             }
             core.setOutput('labels', labels.join('\n'));
             core.setOutput('build-args', buildArgs);
+
+            let buildSecrets;
+            try {
+              buildSecrets = BuildSecrets.prepareBuild(inpBuildSecrets);
+            } catch (err) {
+              core.setFailed(err.message);
+              return;
+            }
+            core.setOutput('secret-dir', buildSecrets.directory);
+            core.setOutput('secret-files', buildSecrets.inputs.join('\n'));
             
             if (GitHub.context.payload.repository?.private ?? false) {
               // if this is a private repository, we set min provenance mode
@@ -781,82 +873,6 @@ jobs:
               // for a public repository, we set max provenance mode
               core.setOutput('provenance', Build.resolveProvenanceAttrs(`mode=max,version=v1`));
             }
-      -
-        name: Configure AWS credentials
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ needs.registry-identities.outputs.aws-ecr-role-to-assume }}
-          aws-region: ${{ needs.registry-identities.outputs.aws-ecr-region }}
-      -
-        name: Login to Amazon ECR
-        if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        env:
-          AWS_ACCOUNT_IDS: ${{ needs.registry-identities.outputs.aws-ecr-account-ids }}
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.aws-ecr-registry }}
-      -
-        name: Authenticate to Google Cloud
-        id: gcp-wif-auth
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          token_format: access_token
-          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
-          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
-          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
-          create_credentials_file: false
-          export_environment_variables: false
-      -
-        name: Login to Google Artifact Registry
-        if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
-              username: oauth2accesstoken
-              password: ${{ steps.gcp-wif-auth.outputs.access_token }}
-      -
-        name: Login to Docker Hub with OIDC
-        if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        env:
-          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
-        with:
-          registry-auth: |
-            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
-              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
-      -
-        name: Authenticate to Azure
-        if: ${{ needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          client-id: ${{ needs.registry-identities.outputs.azure-acr-client-id }}
-          tenant-id: ${{ needs.registry-identities.outputs.azure-acr-tenant-id }}
-          subscription-id: ${{ needs.registry-identities.outputs.azure-acr-subscription-id }}
-      -
-        name: Login to Azure Container Registry
-        if: ${{ needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
-        env:
-          ACR_REGISTRY: ${{ needs.registry-identities.outputs.azure-acr-registry }}
-          AZURE_CORE_OUTPUT: none
-        run: az acr login --name "${ACR_REGISTRY%.azurecr.io}"
-      -
-        name: Set up chainctl
-        if: ${{ needs.registry-identities.outputs.chainguard-enabled == 'true' }}
-        uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
-        with:
-          identity: ${{ needs.registry-identities.outputs.chainguard-identity }}
-          apk-host: ${{ needs.registry-identities.outputs.chainguard-apk-host }}
-          libraries-host: ${{ needs.registry-identities.outputs.chainguard-libraries-host }}
-      -
-        name: Login to registry
-        if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry-auth: ${{ secrets.registry-auths }}
       -
         name: Build
         id: build
@@ -874,12 +890,23 @@ jobs:
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           secret-envs: GIT_AUTH_TOKEN=GIT_AUTH_TOKEN
+          secret-files: ${{ steps.prepare.outputs.secret-files }}
           shm-size: ${{ inputs.shm-size }}
           target: ${{ inputs.target }}
           ulimit: ${{ inputs.ulimit }}
         env:
           BUILDKIT_MULTI_PLATFORM: 1
           GIT_AUTH_TOKEN: ${{ secrets.github-token || github.token }}
+      -
+        name: Remove build secrets
+        if: ${{ always() && steps.prepare.outputs.secret-dir != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_SECRET-DIR: ${{ steps.prepare.outputs.secret-dir }}
+        with:
+          script: |
+            const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
+            BuildSecrets.cleanup(core.getInput('secret-dir', {required: true}));
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
