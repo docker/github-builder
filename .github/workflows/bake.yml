@@ -342,6 +342,7 @@ jobs:
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { BakeTargets } = require('@docker/github-builder-runtime/lib/github-builder/bake-targets');
+            const { BakeVars } = require('@docker/github-builder-runtime/lib/github-builder/bake-vars');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
 
             const inpSbomImage = core.getInput('sbom-image');
@@ -354,7 +355,7 @@ jobs:
             const inpArtifactUpload = core.getBooleanInput('artifact-upload');
             const inpJobNamePrefix = core.getInput('job-name-prefix');
             const inpContext = core.getInput('context');
-            const inpVars = Util.getInputList('vars');
+            const inpVars = Util.getInputList('vars', {ignoreComma: true, quote: false});
             const inpFiles = Util.getInputList('files');
             const inpOutput = core.getInput('output');
             const inpPush = core.getBooleanInput('push');
@@ -404,21 +405,12 @@ jobs:
             }
             const registryLogin = inpRegistryLogin === 'auto' ? inpOutput === 'image' && inpPush : inpRegistryLogin === 'true';
 
-            const envs = Object.assign({},
-              inpVars ? inpVars.reduce((acc, curr) => {
-                const idx = curr.indexOf('=');
-                if (idx !== -1) {
-                  acc[curr.substring(0, idx)] = curr.substring(idx + 1);
-                }
-                return acc;
-              }, {}) : {},
-              {
-                BUILDKIT_MULTI_PLATFORM: '1',
-                BUILDX_BAKE_GIT_AUTH_TOKEN: inpGitHubToken
-              }
-            );
-            await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
+            const bakeVars = BakeVars.resolve(inpVars);
+            await core.group(`Set bake vars`, async () => {
+              core.info(JSON.stringify(bakeVars.map(value => {
+                const idx = value.indexOf('=');
+                return idx === -1 ? '<invalid>' : value.substring(0, idx);
+              }).sort(), null, 2));
             });
 
             const metaImages = inpMetaImages.map(image => image.toLowerCase());
@@ -443,9 +435,14 @@ jobs:
                   overrides: [...validationOverrides, '*.secrets='],
                   sbom: inpSbom ? `generator=${inpSbomImage}` : 'false',
                   source: bakeSource,
-                  targets: [inpTarget]
+                  targets: [inpTarget],
+                  vars: bakeVars,
+                  githubToken: inpGitHubToken
                 }, {
-                  env: Object.keys(envs).length > 0 ? envs : undefined
+                  env: {
+                    BUILDKIT_MULTI_PLATFORM: '1',
+                    BUILDX_BAKE_DISABLE_VARS_ENV_LOOKUP: '1'
+                  }
                 });
                 if (!def) {
                   throw new Error('Bake definition not set');
@@ -851,6 +848,7 @@ jobs:
             const os = require('os');
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
+            const { BakeVars } = require('@docker/github-builder-runtime/lib/github-builder/bake-vars');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
 
@@ -873,7 +871,7 @@ jobs:
             const inpSbom = core.getBooleanInput('sbom');
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpTarget = core.getInput('target');
-            const inpVars = Util.getInputList('vars');
+            const inpVars = Util.getInputList('vars', {ignoreComma: true, quote: false});
             const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
 
             const inpMetaImages = core.getMultilineInput('meta-images');
@@ -918,27 +916,15 @@ jobs:
             }
             core.setOutput('secret-dir', buildSecrets.directory);
 
-            const envs = Object.assign({},
-              inpVars ? inpVars.reduce((acc, curr) => {
-                const idx = curr.indexOf('=');
-                if (idx !== -1) {
-                  acc[curr.substring(0, idx)] = curr.substring(idx + 1);
-                }
-                return acc;
-              }, {}) : {},
-              {
-                BUILDKIT_MULTI_PLATFORM: '1'
-              }
-            );
-
-            // Git authentication is supplied directly to the Bake action.
-            delete envs.BUILDX_BAKE_GIT_AUTH_TOKEN;
-
-            await core.group(`Set envs`, async () => {
-              core.info(JSON.stringify(Object.keys(envs).sort(), null, 2));
-              core.setOutput('envs', JSON.stringify(envs));
+            const bakeVars = BakeVars.resolve(inpVars);
+            await core.group(`Set bake vars`, async () => {
+              core.info(JSON.stringify(bakeVars.map(value => {
+                const idx = value.indexOf('=');
+                return idx === -1 ? '<invalid>' : value.substring(0, idx);
+              }).sort(), null, 2));
+              core.setOutput('vars', bakeVars.join(os.EOL));
             });
-            
+
             let bakeFiles = inpFiles;
             await core.group(`Set bake files`, async () => {
               if (bakeFiles.length === 0) {
@@ -1013,8 +999,11 @@ jobs:
           targets: ${{ steps.prepare.outputs.target }}
           sbom: ${{ steps.prepare.outputs.sbom }}
           set: ${{ steps.prepare.outputs.overrides }}
+          vars: ${{ steps.prepare.outputs.vars }}
           github-token: ${{ secrets.github-token || github.token }}
-        env: ${{ fromJson(steps.prepare.outputs.envs || '{}') }}
+        env:
+          BUILDKIT_MULTI_PLATFORM: '1'
+          BUILDX_BAKE_DISABLE_VARS_ENV_LOOKUP: '1'
       -
         name: Remove build secrets
         if: ${{ always() && steps.prepare.outputs.secret-dir != '' }}
