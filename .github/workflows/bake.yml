@@ -189,8 +189,8 @@ on:
         value: ${{ jobs.finalize.outputs.signed }}
 
 env:
-  BUILDX_VERSION: "v0.38.0"
-  BUILDKIT_IMAGE: "moby/buildkit:v0.34.0"
+  BUILDX_VERSION: "https://github.com/crazy-max/buildx.git#buildkit-fetch-depth"
+  BUILDKIT_IMAGE: "crazymax/buildkit:fetch-depth"
   SBOM_IMAGE: "docker/buildkit-syft-scanner:1.12.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.3-68"
   RUNTIME_MODULE: "@docker/github-builder-runtime@0.106.0"
@@ -284,7 +284,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_IMAGES: |
-            ${{ env.BUILDKIT_IMAGE }}
             ${{ env.SBOM_IMAGE }}
             ${{ env.BINFMT_IMAGE }}
         with:
@@ -397,8 +396,7 @@ jobs:
               return;
             }
             
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
-            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
+            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git?ref=${process.env.GITHUB_REF}&subdir=${inpContext}&fetch-depth=0`;
             await core.group(`Set bake source`, async () => {
               core.info(bakeSource);
             });
@@ -897,8 +895,7 @@ jobs:
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
 
-            const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
-            const bakeSource = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
+            const bakeSource = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git?ref=${process.env.GITHUB_REF}&subdir=${inpContext}&fetch-depth=0`;
             await core.group(`Set source output`, async () => {
               core.info(bakeSource);
               core.setOutput('source', bakeSource);
