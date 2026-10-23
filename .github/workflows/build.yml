@@ -209,7 +209,7 @@ env:
     --prefer-offline
     --fund=false
     --audit=false
-  COSIGN_VERSION: "v3.1.3"
+  COSIGN_VERSION: "v3.1.4"
   LOCAL_EXPORT_DIR: "/tmp/buildx-output"
   MATRIX_SIZE_LIMIT: "20"
   BUILDX_METADATA_PROVENANCE: "false"
