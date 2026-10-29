@@ -817,19 +817,56 @@ jobs:
               tags: inpMetaTags
             };
             const renderTemplate = value => Util.compileHandlebars(value, {noEscape: true}, {meta});
+
+            // metadata-action lines are either "org/app" or "name=org/app,enable=...".
+            // buildx name= wants the ref only, and enable=false should not be a destination.
+            const metaImageName = entry => {
+              const line = entry.trim();
+              if (!line) {
+                return '';
+              }
+              let name = '';
+              let enable = 'true';
+              for (const part of line.split(',')) {
+                const eq = part.indexOf('=');
+                if (eq === -1) {
+                  if (!name) {
+                    name = part.trim();
+                  }
+                  continue;
+                }
+                const key = part.slice(0, eq).trim();
+                const value = part.slice(eq + 1).trim();
+                if (key === 'name') {
+                  name = value;
+                } else if (key === 'enable') {
+                  enable = value;
+                }
+              }
+              if (!name || enable === 'false') {
+                return '';
+              }
+              return name;
+            };
             
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
             
             switch (inpOutput) {
-              case 'image':
+              case 'image': {
                 if (inpMetaImages.length == 0) {
                   core.setFailed('meta-images is required when output is image');
                   return;
                 }
-                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
+                const imageNames = inpMetaImages.map(metaImageName).filter(Boolean);
+                if (imageNames.length === 0) {
+                  core.setFailed('meta-images did not contain an enabled image');
+                  return;
+                }
+                core.setOutput('output', `type=image,"name=${imageNames.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
                 break;
+              }
               case 'local':
                 core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
                 break;
