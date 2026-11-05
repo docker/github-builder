@@ -928,6 +928,53 @@ jobs:
             const { BuildSecrets } = require('@docker/github-builder-runtime/lib/github-builder/build-secrets');
             BuildSecrets.cleanup(core.getInput('secret-dir', {required: true}));
       -
+        name: Authenticate to Google Cloud for signing
+        id: gcp-wif-auth-signing
+        if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
+          service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
+          project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
+          create_credentials_file: false
+          export_environment_variables: false
+      -
+        name: Login to Google Artifact Registry for signing
+        if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
+              username: oauth2accesstoken
+              password: ${{ steps.gcp-wif-auth-signing.outputs.access_token }}
+      -
+        name: Login to Docker Hub with OIDC for signing
+        if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+          DOCKER_LOGIN_SCOPE_DISABLED: true # make signing credentials available outside Buildx scoped configuration
+        with:
+          registry-auth: |
+            - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
+              username: ${{ needs.registry-identities.outputs.dockerhub-oidc-username }}
+      -
+        name: Authenticate to Azure for signing
+        if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ needs.registry-identities.outputs.azure-acr-client-id }}
+          tenant-id: ${{ needs.registry-identities.outputs.azure-acr-tenant-id }}
+          subscription-id: ${{ needs.registry-identities.outputs.azure-acr-subscription-id }}
+      -
+        name: Login to Azure Container Registry for signing
+        if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.azure-acr-enabled == 'true' }}
+        env:
+          ACR_REGISTRY: ${{ needs.registry-identities.outputs.azure-acr-registry }}
+          AZURE_CORE_OUTPUT: none
+        run: az acr login --name "${ACR_REGISTRY%.azurecr.io}"
+      -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
