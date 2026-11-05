@@ -677,7 +677,7 @@ jobs:
       -
         name: Login to Amazon ECR
         if: ${{ needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           AWS_ACCOUNT_IDS: ${{ needs.registry-identities.outputs.aws-ecr-account-ids }}
         with:
@@ -698,7 +698,7 @@ jobs:
       -
         name: Login to Google Artifact Registry
         if: ${{ needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
@@ -707,7 +707,7 @@ jobs:
       -
         name: Login to Docker Hub with OIDC
         if: ${{ needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
         with:
@@ -741,7 +741,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ needs.prepare.outputs.registryLogin == 'true' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
       -
@@ -942,7 +942,7 @@ jobs:
       -
         name: Login to Google Artifact Registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
@@ -951,7 +951,7 @@ jobs:
       -
         name: Login to Docker Hub with OIDC for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
           DOCKER_LOGIN_SCOPE_DISABLED: true # make signing credentials available outside Buildx scoped configuration
@@ -977,7 +977,7 @@ jobs:
       -
         name: Login to registry for signing
         if: ${{ needs.prepare.outputs.sign == 'true' && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
@@ -1158,7 +1158,7 @@ jobs:
       -
         name: Login to Amazon ECR
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           AWS_ACCOUNT_IDS: ${{ needs.registry-identities.outputs.aws-ecr-account-ids }}
         with:
@@ -1179,7 +1179,7 @@ jobs:
       -
         name: Login to Google Artifact Registry
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.gcp-wif-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.gcp-wif-registry }}
@@ -1188,7 +1188,7 @@ jobs:
       -
         name: Login to Docker Hub with OIDC
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.dockerhub-oidc-enabled == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
         with:
@@ -1222,7 +1222,7 @@ jobs:
       -
         name: Login to registry
         if: ${{ inputs.push && inputs.output == 'image' && env.REGISTRY_AUTHS_PRESENT == 'true' }}
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry-auth: ${{ secrets.registry-auths }}
         env:
