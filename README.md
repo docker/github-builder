@@ -555,6 +555,7 @@ jobs:
 | `registry`      | String | No       | Registry hostname passed to `docker/login-action`. Defaults to `docker.io`.                                                       |
 | `username`      | String | Yes      | Docker Hub username or organization passed to `docker/login-action`.                                                              |
 | `connection_id` | String | Yes      | Docker Hub OIDC connection ID passed to `docker/login-action` in each job.                                                        |
+| `expires_in`    | Number | No       | Token lifetime in seconds, from `300` to `21600`. Defaults to `3600`.                                                             |
 | `scope`         | String | No       | [Authentication scope](https://github.com/docker/login-action#set-scopes-for-the-authentication-token) for `docker/login-action`. |
 
 The workflow mints the Docker Hub access token inside each reusable workflow
@@ -632,13 +633,14 @@ jobs:
           project_id: my-project
 ```
 
-| Name                         | Type   | Required | Description                                                                                                                                    |
-|------------------------------|--------|----------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| `type`                       | String | Yes      | Registry identity provider type. Must be `gcp-wif`.                                                                                            |
-| `registry`                   | String | Yes      | Google Artifact Registry host passed to `docker/login-action`, such as `us-docker.pkg.dev`. Do not use the full repository path.               |
-| `workload_identity_provider` | String | Yes      | Workload Identity Provider resource name passed to `google-github-actions/auth`.                                                               |
-| `service_account`            | String | Yes      | Service account email passed to `google-github-actions/auth` for Workload Identity Federation.                                                 |
-| `project_id`                 | String | No       | Google Cloud project ID passed to `google-github-actions/auth` when provided.                                                                  |
+| Name                         | Type   | Required | Description                                                                                                                      |
+|------------------------------|--------|----------|----------------------------------------------------------------------------------------------------------------------------------|
+| `type`                       | String | Yes      | Registry identity provider type. Must be `gcp-wif`.                                                                              |
+| `registry`                   | String | Yes      | Google Artifact Registry host passed to `docker/login-action`, such as `us-docker.pkg.dev`. Do not use the full repository path. |
+| `workload_identity_provider` | String | Yes      | Workload Identity Provider resource name passed to `google-github-actions/auth`.                                                 |
+| `service_account`            | String | Yes      | Service account email passed to `google-github-actions/auth` for Workload Identity Federation.                                   |
+| `project_id`                 | String | No       | Google Cloud project ID passed to `google-github-actions/auth` when provided.                                                    |
+| `expires_in`                 | Number | No       | Access token lifetime in seconds, from `1` to `43200`. Defaults to `3600`.                                                       |
 
 The `registry` value is required for GCP WIF. Use the Artifact Registry host
 that `docker/login-action` should log in to, such as `us-docker.pkg.dev`, not

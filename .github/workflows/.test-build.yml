@@ -48,6 +48,7 @@ jobs:
           registry: docker.io
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+          expires_in: 7200
       meta-images: |
         docker.io/dockereng/github-builder-test
       meta-tags: |
@@ -68,6 +69,7 @@ jobs:
           registry: docker.io
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
+          expires_in: 7200
 
   build-dockerhub-single-outputs:
     runs-on: ubuntu-26.04
