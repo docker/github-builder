@@ -332,6 +332,7 @@ jobs:
         with:
           script: |
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { MetaImages } = require('@docker/github-builder-runtime/lib/github-builder/meta-images');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
             
@@ -399,7 +400,7 @@ jobs:
               core.setOutput('proxyNetwork', proxyNetwork);
             });
 
-            const metaImages = inpMetaImages.map(image => image.toLowerCase());
+            const metaImages = MetaImages.resolve(inpMetaImages);
             await core.group(`Set metaImages output`, async () => {
               core.info(JSON.stringify(metaImages, null, 2));
               core.setOutput('metaImages', metaImages.join('\n'));

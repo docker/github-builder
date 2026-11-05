@@ -695,6 +695,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
   bake-ghcr-image-casing:
+    strategy:
+      matrix:
+        include:
+          - variant: plain
+            images: ghcr.io/docker/GitHub-Builder-Test
+          - variant: attributes
+            images: |
+              name=registry.invalid/disabled/app,enable=false
+              name=ghcr.io/docker/GitHub-Builder-Test,enable=true
     uses: ./.github/workflows/bake.yml
     permissions:
       contents: read
@@ -709,9 +718,9 @@ jobs:
         *.args.VERSION={{meta.version}}
       target: hello-cross
       set-meta-annotations: true
-      meta-images: ghcr.io/docker/GitHub-Builder-Test
+      meta-images: ${{ matrix.images }}
       meta-tags: |
-        type=raw,value=bake-image-casing-${{ github.run_id }}
+        type=raw,value=bake-image-casing-${{ matrix.variant }}-${{ github.run_id }}
     secrets:
       registry-auths: |
         - registry: ghcr.io
