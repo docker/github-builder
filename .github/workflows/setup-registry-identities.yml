@@ -87,7 +87,7 @@ on:
         value: ${{ jobs.setup-registry-identities.outputs.chainguard-libraries-host }}
 
 env:
-  RUNTIME_MODULE: "@docker/github-builder-runtime@0.107.0"
+  RUNTIME_MODULE: "@docker/github-builder-runtime@0.109.0"
   RUNTIME_INSTALL_ARGS: |
     --loglevel=error
     --no-save
