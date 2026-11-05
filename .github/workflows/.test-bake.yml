@@ -750,3 +750,41 @@ jobs:
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
           scope: 'dhi.io@pull'
+
+  bake-compression:
+    strategy:
+      matrix:
+        include:
+          - variant: default
+            compression: ''
+            level: ''
+            force: false
+          - variant: zstd
+            compression: zstd
+            level: '0'
+            force: false
+          - variant: zstd-force
+            compression: zstd
+            level: '9'
+            force: true
+    uses: ./.github/workflows/bake.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      compression: ${{ matrix.compression }}
+      compression-level: ${{ matrix.level }}
+      force-compression: ${{ matrix.force }}
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      context: test
+      target: compression
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=bake-compression-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
