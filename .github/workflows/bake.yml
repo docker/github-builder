@@ -59,6 +59,19 @@ on:
         description: "Cache layers to export if cache enabled (min or max)"
         required: false
         default: 'min'
+      compression:
+        type: string
+        description: "Image layer compression (uncompressed, gzip, estargz or zstd)"
+        required: false
+      compression-level:
+        type: string
+        description: "Image layer compression level (0-9 for gzip and estargz, 0-22 for zstd)"
+        required: false
+      force-compression:
+        type: boolean
+        description: "Recompress existing image layers using the selected compression type"
+        required: false
+        default: false
       context:
         type: string
         description: "Context to build from in the Git working tree"
@@ -225,6 +238,7 @@ jobs:
     outputs:
       sourceDateEpoch: ${{ steps.set.outputs.sourceDateEpoch }}
       sourceDateCreated: ${{ steps.set.outputs.sourceDateCreated }}
+      buildOutput: ${{ steps.set.outputs.buildOutput }}
       includes: ${{ steps.set.outputs.includes }}
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
@@ -321,6 +335,10 @@ jobs:
         id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_COMPRESSION: ${{ inputs.compression }}
+          INPUT_COMPRESSION-LEVEL: ${{ inputs.compression-level }}
+          INPUT_FORCE-COMPRESSION: ${{ inputs.force-compression }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
@@ -349,6 +367,7 @@ jobs:
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { MetaImages } = require('@docker/github-builder-runtime/lib/github-builder/meta-images');
             const { SourceDateEpoch } = require('@docker/github-builder-runtime/lib/github-builder/source-date-epoch');
+            const { BuildOutput } = require('@docker/github-builder-runtime/lib/github-builder/build-output');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { BakeTargets } = require('@docker/github-builder-runtime/lib/github-builder/bake-targets');
             const { BakeVars } = require('@docker/github-builder-runtime/lib/github-builder/bake-vars');
@@ -373,6 +392,10 @@ jobs:
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpSign = core.getInput('sign');
             const inpSourceDateEpoch = core.getInput('source-date-epoch');
+            const inpCompression = core.getInput('compression');
+            const inpCompressionLevel = core.getInput('compression-level');
+            const inpForceCompression = core.getBooleanInput('force-compression');
+            const inpLocalExportDir = core.getInput('local-export-dir');
             const inpTarget = core.getInput('target');
             const inpGitHubToken = core.getInput('github-token');
             const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
@@ -429,7 +452,29 @@ jobs:
               }).sort(), null, 2));
             });
 
+            if (inpCompressionLevel !== '' && (!/^\d+$/.test(inpCompressionLevel) || !Number.isSafeInteger(Number(inpCompressionLevel)))) {
+              core.setFailed(`Invalid compression-level: ${inpCompressionLevel}`);
+              return;
+            }
+
             const metaImages = MetaImages.resolve(inpMetaImages);
+            let buildOutput = BuildOutput.resolve({
+              output: inpOutput,
+              images: metaImages,
+              push: inpPush,
+              localExportDir: inpLocalExportDir,
+              compression: inpCompression || undefined,
+              compressionLevel: inpCompressionLevel !== '' ? Number(inpCompressionLevel) : undefined,
+              forceCompression: inpForceCompression || undefined
+            });
+            if (inpOutput === 'image' && inpSourceDateEpoch !== '') {
+              buildOutput += ',rewrite-timestamp=true';
+            }
+            await core.group(`Set buildOutput output`, async () => {
+              core.info(buildOutput);
+              core.setOutput('buildOutput', buildOutput);
+            });
+
             await core.group(`Set metaImages output`, async () => {
               core.info(JSON.stringify(metaImages, null, 2));
               core.setOutput('metaImages', metaImages.join('\n'));
@@ -842,9 +887,9 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INPUT_SOURCE-DATE-EPOCH: ${{ needs.prepare.outputs.sourceDateEpoch }}
+          INPUT_BUILD-OUTPUT: ${{ needs.prepare.outputs.buildOutput }}
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
-          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
           INPUT_CACHE: ${{ inputs.cache }}
           INPUT_CACHE-SCOPE: ${{ inputs.cache-scope }}
           INPUT_CACHE-MODE: ${{ inputs.cache-mode }}
@@ -852,13 +897,10 @@ jobs:
           INPUT_TARGETS: ${{ needs.prepare.outputs.targets }}
           INPUT_CONTEXT: ${{ inputs.context }}
           INPUT_FILES: ${{ inputs.files }}
-          INPUT_OUTPUT: ${{ inputs.output }}
-          INPUT_PUSH: ${{ inputs.push }}
           INPUT_SBOM: ${{ inputs.sbom }}
           INPUT_SET: ${{ inputs.set }}
           INPUT_TARGET: ${{ inputs.target }}
           INPUT_VARS: ${{ inputs.vars }}
-          INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
           INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
           INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
@@ -877,14 +919,12 @@ jobs:
             const { Util } = require('@docker/github-builder-runtime/lib/util');
 
             const inpSourceDateEpoch = core.getInput('source-date-epoch');
-            const rewriteTimestamp = inpSourceDateEpoch !== '' ? ',rewrite-timestamp=true' : '';
             
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
             
             const inpSbomImage = core.getInput('sbom-image');
-            const inpLocalExportDir = core.getInput('local-export-dir');
             
             const inpCache = core.getBooleanInput('cache');
             const inpCacheScope = core.getInput('cache-scope');
@@ -893,15 +933,12 @@ jobs:
             const inpTargets = core.getInput('targets');
             const inpContext = core.getInput('context');
             const inpFiles = Util.getInputList('files');
-            const inpOutput = core.getInput('output');
-            const inpPush = core.getBooleanInput('push');
             const inpSbom = core.getBooleanInput('sbom');
             const inpSet = Util.getInputList('set', {ignoreComma: true, quote: false});
             const inpTarget = core.getInput('target');
             const inpVars = Util.getInputList('vars', {ignoreComma: true, quote: false});
             const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
 
-            const inpMetaImages = core.getMultilineInput('meta-images');
             const inpMetaVersion = core.getInput('meta-version');
             const inpMetaTags = core.getMultilineInput('meta-tags');
             const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
@@ -970,23 +1007,6 @@ jobs:
               core.setOutput('files', bakeFiles.join(os.EOL));
             });
             
-            let outputOverride = '';
-            switch (inpOutput) {
-              case 'image':
-                if (inpMetaImages.length == 0) {
-                  core.setFailed('meta-images is required when output is image');
-                  return;
-                }
-                outputOverride = `*.output=type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}${rewriteTimestamp}`;
-                break;
-              case 'local':
-                outputOverride = `*.output=type=local,platform-split=true,dest=${inpLocalExportDir}`;
-                break;
-              default:
-                core.setFailed(`Invalid output: ${inpOutput}`);
-                return;
-            }
-            
             let bakeOverrides = [];
             try {
               bakeOverrides = inpSet.map(override => renderTemplate(override));
@@ -998,7 +1018,7 @@ jobs:
               if (inpSourceDateEpoch !== '') {
                 bakeOverrides.push(`*.args.SOURCE_DATE_EPOCH=${inpSourceDateEpoch}`);
               }
-              bakeOverrides.push(outputOverride);
+              bakeOverrides.push(`*.output=${core.getInput('build-output')}`);
               bakeOverrides.push('*.tags=');
               if (GitHub.context.payload.repository?.private ?? false) {
                 // if this is a private repository, we set min provenance mode

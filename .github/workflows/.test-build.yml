@@ -848,3 +848,86 @@ jobs:
               await exec.exec('docker', ['rm', container]);
               fs.rmSync(directory, {recursive: true, force: true});
             }
+
+  build-compression:
+    strategy:
+      matrix:
+        include:
+          - variant: default
+            compression: ''
+            level: ''
+            force: false
+          - variant: zstd
+            compression: zstd
+            level: '0'
+            force: false
+          - variant: zstd-force
+            compression: zstd
+            level: '9'
+            force: true
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      compression: ${{ matrix.compression }}
+      compression-level: ${{ matrix.level }}
+      force-compression: ${{ matrix.force }}
+      output: image
+      push: ${{ github.event_name != 'pull_request' }}
+      file: test/compression.Dockerfile
+      platforms: linux/amd64,linux/arm64
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=build-compression-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-compression-check:
+    runs-on: ubuntu-26.04
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-compression
+    strategy:
+      matrix:
+        include:
+          - variant: default
+            base: gzip
+            added: gzip
+          - variant: zstd
+            base: gzip
+            added: zstd
+          - variant: zstd-force
+            base: zstd
+            added: zstd
+    steps:
+      -
+        name: Check image layer compression
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_IMAGE: ghcr.io/docker/github-builder-test
+          INPUT_TAG: build-compression-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+          INPUT_BASE-COMPRESSION: ${{ matrix.base }}
+          INPUT_ADDED-COMPRESSION: ${{ matrix.added }}
+        with:
+          script: |
+            const assert = require('node:assert/strict');
+            const image = core.getInput('image');
+            const inspect = async ref => {
+              const {stdout} = await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', '--raw', ref], {silent: true});
+              return JSON.parse(stdout);
+            };
+            const index = await inspect(`${image}:${core.getInput('tag')}`);
+            const manifests = index.manifests.filter(manifest => manifest.platform?.os === 'linux');
+            assert.deepEqual(manifests.map(manifest => manifest.platform.architecture).sort(), ['amd64', 'arm64']);
+            for (const {digest} of manifests) {
+              const {layers} = await inspect(`${image}@${digest}`);
+              assert.ok(layers.length >= 2, 'Expected base image layers and the fixture layer');
+              const expected = layers.map((_, index) => core.getInput(index === layers.length - 1 ? 'added-compression' : 'base-compression'));
+              const actual = layers.map(layer => layer.mediaType.split('+').pop());
+              assert.deepEqual(actual, expected, `Unexpected layer compression for ${image}@${digest}`);
+            }
