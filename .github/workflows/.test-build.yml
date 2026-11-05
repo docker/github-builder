@@ -707,6 +707,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
   build-ghcr-image-casing:
+    strategy:
+      matrix:
+        include:
+          - variant: plain
+            images: ghcr.io/docker/GitHub-Builder-Test
+          - variant: attributes
+            images: |
+              name=registry.invalid/disabled/app,enable=false
+              name=ghcr.io/docker/GitHub-Builder-Test,enable=true
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
@@ -721,9 +730,9 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
       sbom: true
       set-meta-annotations: true
-      meta-images: ghcr.io/docker/GitHub-Builder-Test
+      meta-images: ${{ matrix.images }}
       meta-tags: |
-        type=raw,value=build-image-casing-${{ github.run_id }}
+        type=raw,value=build-image-casing-${{ matrix.variant }}-${{ github.run_id }}
     secrets:
       registry-auths: |
         - registry: ghcr.io

@@ -340,6 +340,7 @@ jobs:
             const { Bake } = require('@docker/github-builder-runtime/lib/buildx/bake');
             const { Build } = require('@docker/github-builder-runtime/lib/buildx/build');
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
+            const { MetaImages } = require('@docker/github-builder-runtime/lib/github-builder/meta-images');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { BakeTargets } = require('@docker/github-builder-runtime/lib/github-builder/bake-targets');
             const { BakeVars } = require('@docker/github-builder-runtime/lib/github-builder/bake-vars');
@@ -413,7 +414,7 @@ jobs:
               }).sort(), null, 2));
             });
 
-            const metaImages = inpMetaImages.map(image => image.toLowerCase());
+            const metaImages = MetaImages.resolve(inpMetaImages);
             await core.group(`Set metaImages output`, async () => {
               core.info(JSON.stringify(metaImages, null, 2));
               core.setOutput('metaImages', metaImages.join('\n'));
