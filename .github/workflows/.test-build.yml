@@ -759,3 +759,32 @@ jobs:
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
           scope: 'dhi.io@pull'
+
+  build-source-date-epoch:
+    strategy:
+      matrix:
+        epoch:
+          - '0'
+          - '1704067200'
+          - 'commit'
+        output:
+          - image
+          - local
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      output: ${{ matrix.output }}
+      source-date-epoch: ${{ matrix.epoch }}
+      set-meta-labels: true
+      set-meta-annotations: true
+      meta-images: example/source-date-epoch
+      meta-labels: |
+        org.opencontainers.image.created=2000-01-01T00:00:00Z
+      meta-annotations: |
+        org.opencontainers.image.created=2000-01-01T00:00:00Z
+      file: test/source-date-epoch.Dockerfile
+      build-args: |
+        SOURCE_DATE_EPOCH=1
+        EXPECTED_EPOCH=${{ matrix.epoch }}

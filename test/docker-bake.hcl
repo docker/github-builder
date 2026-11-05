@@ -128,3 +128,8 @@ target "dhi" {
   inherits = ["docker-metadata-action"]
   dockerfile = "dhi.Dockerfile"
 }
+
+target "source-date-epoch" {
+  inherits = ["docker-metadata-action"]
+  dockerfile = "source-date-epoch.Dockerfile"
+}
