@@ -690,6 +690,7 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           token_format: access_token
+          access_token_lifetime: ${{ format('{0}s', needs.registry-identities.outputs.gcp-wif-expires-in || '3600') }}
           workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
           service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
           project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
@@ -710,6 +711,7 @@ jobs:
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+          DOCKERHUB_OIDC_EXPIREIN: ${{ needs.registry-identities.outputs.dockerhub-oidc-expires-in || '3600' }}
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
@@ -934,6 +936,7 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           token_format: access_token
+          access_token_lifetime: ${{ format('{0}s', needs.registry-identities.outputs.gcp-wif-expires-in || '3600') }}
           workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
           service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
           project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
@@ -954,6 +957,7 @@ jobs:
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+          DOCKERHUB_OIDC_EXPIREIN: ${{ needs.registry-identities.outputs.dockerhub-oidc-expires-in || '3600' }}
           DOCKER_LOGIN_SCOPE_DISABLED: true # make signing credentials available outside Buildx scoped configuration
         with:
           registry-auth: |
@@ -1171,6 +1175,7 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           token_format: access_token
+          access_token_lifetime: ${{ format('{0}s', needs.registry-identities.outputs.gcp-wif-expires-in || '3600') }}
           workload_identity_provider: ${{ needs.registry-identities.outputs.gcp-wif-workload-identity-provider }}
           service_account: ${{ needs.registry-identities.outputs.gcp-wif-service-account }}
           project_id: ${{ needs.registry-identities.outputs.gcp-wif-project-id }}
@@ -1191,6 +1196,7 @@ jobs:
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ needs.registry-identities.outputs.dockerhub-oidc-connection-id }}
+          DOCKERHUB_OIDC_EXPIREIN: ${{ needs.registry-identities.outputs.dockerhub-oidc-expires-in || '3600' }}
         with:
           registry-auth: |
             - registry: ${{ needs.registry-identities.outputs.dockerhub-oidc-registry }}
