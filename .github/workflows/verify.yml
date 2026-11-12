@@ -184,7 +184,7 @@ jobs:
       -
         name: Set up chainctl
         if: ${{ steps.vars.outputs.signed == 'true' && steps.vars.outputs.output-type == 'image' && needs.registry-identities.outputs.chainguard-enabled == 'true' }}
-        uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
+        uses: chainguard-dev/setup-chainctl@bfe7503a12660737d9d66d02d2610a399d804316 # v0.6.0
         with:
           identity: ${{ needs.registry-identities.outputs.chainguard-identity }}
           apk-host: ${{ needs.registry-identities.outputs.chainguard-apk-host }}
