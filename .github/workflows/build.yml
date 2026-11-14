@@ -112,6 +112,10 @@ on:
         description: "Sign attestation manifest for image output or artifacts for local output, can be one of auto, true or false. The auto mode will enable signing if push is enabled for pushing the image or if artifact-upload is enabled for uploading the local build output as GitHub Artifact"
         required: false
         default: auto
+      source-date-epoch:
+        type: string
+        description: "Reproducible timestamp: commit or a non-negative Unix timestamp (empty disables)"
+        required: false
       target:
         type: string
         description: "Sets the target stage to build"
@@ -230,6 +234,8 @@ jobs:
         include:
           - name: ${{ inputs.job-name-prefix }}
     outputs:
+      sourceDateEpoch: ${{ steps.set.outputs.sourceDateEpoch }}
+      sourceDateCreated: ${{ steps.set.outputs.sourceDateCreated }}
       includes: ${{ steps.set.outputs.includes }}
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
@@ -328,11 +334,14 @@ jobs:
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_REGISTRY-LOGIN: ${{ inputs.registry-login }}
           INPUT_SIGN: ${{ inputs.sign }}
+          INPUT_SOURCE-DATE-EPOCH: ${{ inputs.source-date-epoch }}
+          INPUT_GITHUB-TOKEN: ${{ secrets.github-token || github.token }}
           INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { MetaImages } = require('@docker/github-builder-runtime/lib/github-builder/meta-images');
+            const { SourceDateEpoch } = require('@docker/github-builder-runtime/lib/github-builder/source-date-epoch');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
             
@@ -349,8 +358,16 @@ jobs:
             const inpPush = core.getBooleanInput('push');
             const inpRegistryLogin = core.getInput('registry-login');
             const inpSign = core.getInput('sign');
+            const inpSourceDateEpoch = core.getInput('source-date-epoch');
+            const inpGitHubToken = core.getInput('github-token');
             const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
+            if (inpSourceDateEpoch !== '') {
+              const {epoch, created} = await SourceDateEpoch.resolve(inpSourceDateEpoch, {token: inpGitHubToken});
+              core.setOutput('sourceDateEpoch', epoch);
+              core.setOutput('sourceDateCreated', created);
+            }
+
             let runnerConfig;
             try {
               runnerConfig = RunnerMapping.parse(inpRunner);
@@ -526,8 +543,12 @@ jobs:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
           flavor: ${{ inputs.meta-flavor }}
-          labels: ${{ inputs.meta-labels }}
-          annotations: ${{ inputs.meta-annotations }}
+          labels: |
+            ${{ inputs.meta-labels }}
+            ${{ needs.prepare.outputs.sourceDateCreated != '' && format('org.opencontainers.image.created={0}', needs.prepare.outputs.sourceDateCreated) || '' }}
+          annotations: |
+            ${{ inputs.meta-annotations }}
+            ${{ needs.prepare.outputs.sourceDateCreated != '' && format('org.opencontainers.image.created={0}', needs.prepare.outputs.sourceDateCreated) || '' }}
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
@@ -752,6 +773,7 @@ jobs:
         id: prepare
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          INPUT_SOURCE-DATE-EPOCH: ${{ needs.prepare.outputs.sourceDateEpoch }}
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
           INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
@@ -784,6 +806,12 @@ jobs:
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
 
+            const inpSourceDateEpoch = core.getInput('source-date-epoch');
+            if (inpSourceDateEpoch !== '') {
+              core.exportVariable('SOURCE_DATE_EPOCH', inpSourceDateEpoch);
+            }
+            const rewriteTimestamp = inpSourceDateEpoch !== '' ? ',rewrite-timestamp=true' : '';
+            
             const inpPlatform = core.getInput('platform');
             const platformPairSuffix = inpPlatform ? `-${inpPlatform.replace(/\//g, '-')}` : '';
             core.setOutput('platform-pair-suffix', platformPairSuffix);
@@ -831,7 +859,7 @@ jobs:
                   core.setFailed('meta-images is required when output is image');
                   return;
                 }
-                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
+                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}${rewriteTimestamp}`);
                 break;
               case 'local':
                 core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
@@ -877,6 +905,10 @@ jobs:
               labels.push(...inpMetaLabels);
             }
             core.setOutput('labels', labels.join('\n'));
+            
+            if (inpSourceDateEpoch !== '') {
+              buildArgs += `\nSOURCE_DATE_EPOCH=${inpSourceDateEpoch}`;
+            }
             core.setOutput('build-args', buildArgs);
 
             let buildSecrets;
@@ -1151,8 +1183,12 @@ jobs:
           images: ${{ needs.prepare.outputs.metaImages }}
           tags: ${{ inputs.meta-tags }}
           flavor: ${{ inputs.meta-flavor }}
-          labels: ${{ inputs.meta-labels }}
-          annotations: ${{ inputs.meta-annotations }}
+          labels: |
+            ${{ inputs.meta-labels }}
+            ${{ needs.prepare.outputs.sourceDateCreated != '' && format('org.opencontainers.image.created={0}', needs.prepare.outputs.sourceDateCreated) || '' }}
+          annotations: |
+            ${{ inputs.meta-annotations }}
+            ${{ needs.prepare.outputs.sourceDateCreated != '' && format('org.opencontainers.image.created={0}', needs.prepare.outputs.sourceDateCreated) || '' }}
       -
         name: Configure AWS credentials
         if: ${{ inputs.push && inputs.output == 'image' && needs.registry-identities.outputs.aws-ecr-enabled == 'true' }}
