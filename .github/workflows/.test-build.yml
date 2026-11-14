@@ -759,3 +759,64 @@ jobs:
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
           scope: 'dhi.io@pull'
+
+  build-ghcr-compression:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      compression: zstd
+      compression-level: 9
+      force-compression: true
+      file: test/compression.Dockerfile
+      output: image
+      platforms: linux/amd64,linux/arm64
+      push: ${{ github.event_name != 'pull_request' }}
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=build-compression-${{ github.run_id }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ghcr-compression-check:
+    runs-on: ubuntu-26.04
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-ghcr-compression
+    steps:
+      -
+        name: Check layers compression
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUT_IMAGE: ghcr.io/docker/github-builder-test
+          INPUT_TAG: build-compression-${{ github.run_id }}
+        with:
+          script: |
+            const inpImage = core.getInput('image');
+            const inpTag = core.getInput('tag');
+
+            const inspectRaw = async ref => {
+              const res = await exec.getExecOutput('docker', ['buildx', 'imagetools', 'inspect', '--raw', ref], {silent: true});
+              return JSON.parse(res.stdout);
+            };
+
+            const index = await inspectRaw(`${inpImage}:${inpTag}`);
+            const digests = index.manifests.filter(m => m.platform?.os !== 'unknown').map(m => m.digest);
+            if (digests.length === 0) {
+              core.setFailed(`No platform manifests found for ${inpImage}:${inpTag}`);
+              return;
+            }
+            for (const digest of digests) {
+              const manifest = await inspectRaw(`${inpImage}@${digest}`);
+              const mediaTypes = manifest.layers.map(layer => layer.mediaType);
+              core.info(`${digest}: ${JSON.stringify(mediaTypes)}`);
+              if (mediaTypes.length === 0 || !mediaTypes.every(mediaType => mediaType.endsWith('+zstd'))) {
+                core.setFailed(`Layers of ${inpImage}@${digest} are not zstd compressed`);
+                return;
+              }
+            }

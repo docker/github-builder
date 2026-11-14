@@ -67,6 +67,19 @@ on:
         description: "Cache layers to export if cache enabled (min or max)"
         required: false
         default: 'min'
+      compression:
+        type: string
+        description: "Compression algorithm for image layers (one of uncompressed, gzip, estargz or zstd) (for image output)"
+        required: false
+      compression-level:
+        type: string
+        description: "Compression level for image layers (0-9 for gzip and estargz, 0-22 for zstd) (for image output)"
+        required: false
+      force-compression:
+        type: boolean
+        description: "Force re-compressing layers imported from a previous image if their compression type differs (for image output)"
+        required: false
+        default: false
       context:
         type: string
         description: "Context to build from in the Git working tree"
@@ -237,6 +250,7 @@ jobs:
       ghaCacheSign: ${{ steps.set.outputs.ghaCacheSign }}
       proxyNetwork: ${{ steps.set.outputs.proxyNetwork }}
       registryLogin: ${{ steps.set.outputs.registryLogin }}
+      compressionAttrs: ${{ steps.set.outputs.compressionAttrs }}
     steps:
       -
         name: Install dependencies
@@ -328,6 +342,9 @@ jobs:
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_REGISTRY-LOGIN: ${{ inputs.registry-login }}
           INPUT_SIGN: ${{ inputs.sign }}
+          INPUT_COMPRESSION: ${{ inputs.compression }}
+          INPUT_COMPRESSION-LEVEL: ${{ inputs.compression-level }}
+          INPUT_FORCE-COMPRESSION: ${{ inputs.force-compression }}
           INPUT_BUILDKIT-PROXY-NETWORK: ${{ inputs.buildkit-proxy-network }}
         with:
           script: |
@@ -349,8 +366,11 @@ jobs:
             const inpPush = core.getBooleanInput('push');
             const inpRegistryLogin = core.getInput('registry-login');
             const inpSign = core.getInput('sign');
+            const inpCompression = core.getInput('compression');
+            const inpCompressionLevel = core.getInput('compression-level');
+            const inpForceCompression = core.getBooleanInput('force-compression');
             const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
-            
+
             let runnerConfig;
             try {
               runnerConfig = RunnerMapping.parse(inpRunner);
@@ -382,6 +402,28 @@ jobs:
               return;
             }
             const registryLogin = inpRegistryLogin === 'auto' ? inpOutput === 'image' && inpPush : inpRegistryLogin === 'true';
+
+            if (inpCompression && !['uncompressed', 'gzip', 'estargz', 'zstd'].includes(inpCompression)) {
+              core.setFailed(`Invalid compression input: ${inpCompression}`);
+              return;
+            }
+            if (inpCompressionLevel && !/^\d+$/.test(inpCompressionLevel)) {
+              core.setFailed(`Invalid compression-level input: ${inpCompressionLevel}`);
+              return;
+            }
+            const compressionAttrs = [];
+            if (inpCompression) {
+              compressionAttrs.push(`compression=${inpCompression}`);
+            }
+            if (inpCompressionLevel) {
+              compressionAttrs.push(`compression-level=${inpCompressionLevel}`);
+            }
+            if (inpForceCompression) {
+              compressionAttrs.push('force-compression=true');
+            }
+            if (inpOutput === 'local' && compressionAttrs.length > 0) {
+              core.warning(`compression inputs are ignored when output is local`);
+            }
 
             if (inpDistribute && inpPlatforms.length > inpMatrixSizeLimit) {
               core.setFailed(`Platforms to build exceed matrix size limit of ${inpMatrixSizeLimit}`);
@@ -443,6 +485,10 @@ jobs:
             await core.group(`Set registryLogin output`, async () => {
               core.info(`registryLogin: ${registryLogin}`);
               core.setOutput('registryLogin', registryLogin);
+            });
+            await core.group(`Set compressionAttrs output`, async () => {
+              core.info(`compressionAttrs: ${compressionAttrs.join(',')}`);
+              core.setOutput('compressionAttrs', compressionAttrs.join(','));
             });
 
   build:
@@ -770,6 +816,7 @@ jobs:
           INPUT_PUSH: ${{ inputs.push }}
           INPUT_SBOM: ${{ inputs.sbom }}
           INPUT_TARGET: ${{ inputs.target }}
+          INPUT_COMPRESSION-ATTRS: ${{ needs.prepare.outputs.compressionAttrs }}
           INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
           INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
@@ -806,7 +853,8 @@ jobs:
             const inpSbom = core.getBooleanInput('sbom');
             const inpTarget = core.getInput('target');
             const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
-            
+            const inpCompressionAttrs = core.getInput('compression-attrs');
+
             const inpMetaImages = core.getMultilineInput('meta-images');
             const inpMetaVersion = core.getInput('meta-version');
             const inpMetaTags = core.getMultilineInput('meta-tags');
@@ -831,7 +879,7 @@ jobs:
                   core.setFailed('meta-images is required when output is image');
                   return;
                 }
-                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
+                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}${inpCompressionAttrs ? `,${inpCompressionAttrs}` : ''}`);
                 break;
               case 'local':
                 core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
