@@ -67,6 +67,19 @@ on:
         description: "Cache layers to export if cache enabled (min or max)"
         required: false
         default: 'min'
+      compression:
+        type: string
+        description: "Image layer compression (uncompressed, gzip, estargz or zstd)"
+        required: false
+      compression-level:
+        type: string
+        description: "Image layer compression level (0-9 for gzip and estargz, 0-22 for zstd)"
+        required: false
+      force-compression:
+        type: boolean
+        description: "Recompress existing image layers using the selected compression type"
+        required: false
+        default: false
       context:
         type: string
         description: "Context to build from in the Git working tree"
@@ -230,6 +243,7 @@ jobs:
         include:
           - name: ${{ inputs.job-name-prefix }}
     outputs:
+      buildOutput: ${{ steps.set.outputs.buildOutput }}
       includes: ${{ steps.set.outputs.includes }}
       metaImages: ${{ steps.set.outputs.metaImages }}
       sign: ${{ steps.set.outputs.sign }}
@@ -317,6 +331,10 @@ jobs:
         id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
+          INPUT_COMPRESSION: ${{ inputs.compression }}
+          INPUT_COMPRESSION-LEVEL: ${{ inputs.compression-level }}
+          INPUT_FORCE-COMPRESSION: ${{ inputs.force-compression }}
           INPUT_MATRIX-SIZE-LIMIT: ${{ env.MATRIX_SIZE_LIMIT }}
           INPUT_META-IMAGES: ${{ inputs.meta-images }}
           INPUT_RUNNER: ${{ inputs.runner }}
@@ -333,6 +351,7 @@ jobs:
           script: |
             const { GitHub } = require('@docker/github-builder-runtime/lib/github/github');
             const { MetaImages } = require('@docker/github-builder-runtime/lib/github-builder/meta-images');
+            const { BuildOutput } = require('@docker/github-builder-runtime/lib/github-builder/build-output');
             const { RunnerMapping } = require('@docker/github-builder-runtime/lib/github-builder/runner-mapping');
             const { Util } = require('@docker/github-builder-runtime/lib/util');
             
@@ -349,6 +368,10 @@ jobs:
             const inpPush = core.getBooleanInput('push');
             const inpRegistryLogin = core.getInput('registry-login');
             const inpSign = core.getInput('sign');
+            const inpCompression = core.getInput('compression');
+            const inpCompressionLevel = core.getInput('compression-level');
+            const inpForceCompression = core.getBooleanInput('force-compression');
+            const inpLocalExportDir = core.getInput('local-export-dir');
             const inpProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
             let runnerConfig;
@@ -400,7 +423,33 @@ jobs:
               core.setOutput('proxyNetwork', proxyNetwork);
             });
 
+            if (inpCompression && !['uncompressed', 'gzip', 'estargz', 'zstd'].includes(inpCompression)) {
+              core.setFailed(`Invalid compression: ${inpCompression}`);
+              return;
+            }
+            if (inpCompressionLevel !== '' && (!/^\d+$/.test(inpCompressionLevel) || !Number.isSafeInteger(Number(inpCompressionLevel)))) {
+              core.setFailed(`Invalid compression-level: ${inpCompressionLevel}`);
+              return;
+            }
+            if (inpOutput === 'local' && (inpCompression || inpCompressionLevel !== '' || inpForceCompression)) {
+              core.warning('Compression settings are ignored for local output');
+            }
+
             const metaImages = MetaImages.resolve(inpMetaImages);
+            const buildOutput = BuildOutput.resolve({
+              output: inpOutput,
+              images: metaImages,
+              push: inpPush,
+              localExportDir: inpLocalExportDir,
+              compression: inpCompression || undefined,
+              compressionLevel: inpCompressionLevel !== '' ? Number(inpCompressionLevel) : undefined,
+              forceCompression: inpForceCompression || undefined
+            });
+            await core.group(`Set buildOutput output`, async () => {
+              core.info(buildOutput);
+              core.setOutput('buildOutput', buildOutput);
+            });
+
             await core.group(`Set metaImages output`, async () => {
               core.info(JSON.stringify(metaImages, null, 2));
               core.setOutput('metaImages', metaImages.join('\n'));
@@ -754,7 +803,6 @@ jobs:
         env:
           INPUT_PLATFORM: ${{ matrix.platform }}
           INPUT_SBOM-IMAGE: ${{ env.SBOM_IMAGE }}
-          INPUT_LOCAL-EXPORT-DIR: ${{ env.LOCAL_EXPORT_DIR }}
           INPUT_DISTRIBUTE: ${{ inputs.distribute }}
           INPUT_ANNOTATIONS: ${{ inputs.annotations }}
           INPUT_BUILD-ARGS: ${{ inputs.build-args }}
@@ -765,12 +813,9 @@ jobs:
           INPUT_BUILD-SECRETS: ${{ secrets.build-secrets }}
           INPUT_LABELS: ${{ inputs.labels }}
           INPUT_CONTEXT: ${{ inputs.context }}
-          INPUT_OUTPUT: ${{ inputs.output }}
           INPUT_PLATFORMS: ${{ inputs.platforms }}
-          INPUT_PUSH: ${{ inputs.push }}
           INPUT_SBOM: ${{ inputs.sbom }}
           INPUT_TARGET: ${{ inputs.target }}
-          INPUT_META-IMAGES: ${{ needs.prepare.outputs.metaImages }}
           INPUT_META-VERSION: ${{ steps.meta.outputs.version }}
           INPUT_META-TAGS: ${{ steps.meta.outputs.tags }}
           INPUT_SET-META-ANNOTATIONS: ${{ inputs.set-meta-annotations }}
@@ -789,7 +834,6 @@ jobs:
             core.setOutput('platform-pair-suffix', platformPairSuffix);
             
             const inpSbomImage = core.getInput('sbom-image');
-            const inpLocalExportDir = core.getInput('local-export-dir');
             const inpDistribute = core.getBooleanInput('distribute');
             
             const inpAnnotations = core.getInput('annotations');
@@ -800,14 +844,11 @@ jobs:
             const inpBuildSecrets = core.getInput('build-secrets', {trimWhitespace: false});
             const inpContext = core.getInput('context');
             const inpLabels = core.getInput('labels');
-            const inpOutput = core.getInput('output');
             const inpPlatforms = core.getInput('platforms');
-            const inpPush = core.getBooleanInput('push');
             const inpSbom = core.getBooleanInput('sbom');
             const inpTarget = core.getInput('target');
             const inpBuildkitProxyNetwork = core.getBooleanInput('buildkit-proxy-network');
             
-            const inpMetaImages = core.getMultilineInput('meta-images');
             const inpMetaVersion = core.getInput('meta-version');
             const inpMetaTags = core.getMultilineInput('meta-tags');
             const inpSetMetaAnnotations = core.getBooleanInput('set-meta-annotations');
@@ -824,22 +865,6 @@ jobs:
             const gitContextAttrs = GitHub.context.ref.startsWith('refs/tags/') ? {checksum: GitHub.context.sha} : {'fetch-by-commit': 'true'};
             const buildContext = await new Build().gitContext({subdir: inpContext, attrs: gitContextAttrs});
             core.setOutput('context', buildContext);
-            
-            switch (inpOutput) {
-              case 'image':
-                if (inpMetaImages.length == 0) {
-                  core.setFailed('meta-images is required when output is image');
-                  return;
-                }
-                core.setOutput('output', `type=image,"name=${inpMetaImages.join(',')}",oci-artifact=true,push-by-digest=true,name-canonical=true,push=${inpPush}`);
-                break;
-              case 'local':
-                core.setOutput('output', `type=local,platform-split=true,dest=${inpLocalExportDir}`);
-                break;
-              default:
-                core.setFailed(`Invalid output: ${inpOutput}`);
-                return;
-            }
             
             if (inpPlatform) {
               core.setOutput('platform', inpPlatform);
@@ -908,7 +933,7 @@ jobs:
           context: ${{ steps.prepare.outputs.context }}
           file: ${{ inputs.file }}
           labels: ${{ steps.prepare.outputs.labels }}
-          outputs: ${{ steps.prepare.outputs.output }}
+          outputs: ${{ needs.prepare.outputs.buildOutput }}
           platforms: ${{ steps.prepare.outputs.platform }}
           provenance: ${{ steps.prepare.outputs.provenance }}
           sbom: ${{ steps.prepare.outputs.sbom }}

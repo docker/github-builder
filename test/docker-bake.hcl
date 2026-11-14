@@ -128,3 +128,9 @@ target "dhi" {
   inherits = ["docker-metadata-action"]
   dockerfile = "dhi.Dockerfile"
 }
+
+target "compression" {
+  inherits = ["docker-metadata-action"]
+  dockerfile = "compression.Dockerfile"
+  platforms = ["linux/amd64", "linux/arm64"]
+}
