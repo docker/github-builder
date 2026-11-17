@@ -759,3 +759,92 @@ jobs:
           username: ${{ vars.DOCKERHUB_OIDC_USERNAME }}
           connection_id: ${{ vars.DOCKERHUB_OIDC_CONNECTIONID }}
           scope: 'dhi.io@pull'
+
+  build-source-date-epoch:
+    strategy:
+      matrix:
+        epoch:
+          - '0'
+          - '1704067200'
+          - 'commit'
+        output:
+          - image
+          - local
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      output: ${{ matrix.output }}
+      push: ${{ matrix.output == 'image' && github.event_name != 'pull_request' }}
+      platforms: linux/amd64
+      source-date-epoch: ${{ matrix.epoch }}
+      set-meta-labels: true
+      set-meta-annotations: true
+      meta-images: ghcr.io/docker/github-builder-test
+      meta-tags: |
+        type=raw,value=build-epoch-${{ matrix.epoch }}-${{ github.run_id }}-${{ github.run_attempt }}
+      meta-labels: |
+        org.opencontainers.image.created=2000-01-01T00:00:00Z
+      meta-annotations: |
+        org.opencontainers.image.created=2000-01-01T00:00:00Z
+      file: test/source-date-epoch.Dockerfile
+      build-args: |
+        SOURCE_DATE_EPOCH=1
+        EXPECTED_EPOCH=${{ matrix.epoch }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+  build-source-date-epoch-verify:
+    if: ${{ github.event_name != 'pull_request' }}
+    needs:
+      - build-source-date-epoch
+    runs-on: ubuntu-26.04
+    permissions:
+      packages: read
+    strategy:
+      matrix:
+        epoch:
+          - '0'
+          - '1704067200'
+          - 'commit'
+    steps:
+      -
+        name: Login to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      -
+        name: Check image file timestamp
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          IMAGE: ghcr.io/docker/github-builder-test:build-epoch-${{ matrix.epoch }}-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          script: |
+            const assert = require('node:assert/strict');
+            const fs = require('node:fs');
+            const os = require('node:os');
+            const path = require('node:path');
+
+            const image = process.env.IMAGE;
+            await exec.exec('docker', ['pull', '--platform', 'linux/amd64', image]);
+            const {stdout} = await exec.getExecOutput('docker', ['create', '--platform', 'linux/amd64', image, '/unused']);
+            const container = stdout.trim();
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'source-date-epoch-'));
+            try {
+              const file = path.join(directory, 'epoch');
+              await exec.exec('docker', ['cp', `${container}:/epoch`, file]);
+              const epoch = Number(fs.readFileSync(file, 'utf8').trim());
+              const mtime = fs.statSync(file).mtimeMs / 1000;
+              assert.equal(mtime, epoch, `Expected image file timestamp ${epoch}, got ${mtime}`);
+              core.info(`Image file timestamp matches SOURCE_DATE_EPOCH=${epoch}`);
+            } finally {
+              await exec.exec('docker', ['rm', container]);
+              fs.rmSync(directory, {recursive: true, force: true});
+            }
