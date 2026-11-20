@@ -134,3 +134,9 @@ target "source-date-epoch" {
   dockerfile = "source-date-epoch.Dockerfile"
   platforms = ["linux/amd64"]
 }
+
+target "compression" {
+  inherits = ["docker-metadata-action"]
+  dockerfile = "compression.Dockerfile"
+  platforms = ["linux/amd64", "linux/arm64"]
+}
