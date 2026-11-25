@@ -203,7 +203,7 @@ on:
 env:
   BUILDX_VERSION: "v0.39.1"
   BUILDKIT_IMAGE: "moby/buildkit:v0.35.1"
-  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.12.1"
+  SBOM_IMAGE: "docker/buildkit-syft-scanner:1.13.0"
   BINFMT_IMAGE: "tonistiigi/binfmt:qemu-v10.2.3-68"
   RUNTIME_MODULE: "@docker/github-builder-runtime@0.109.0"
   RUNTIME_INSTALL_ARGS: |
